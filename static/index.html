@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>炉石单机版</title>
+<style>
+body{background:#161618;color:#ddd;font:14px/1.5 -apple-system,"PingFang SC",sans-serif;margin:0;padding:12px}
+button{background:#2a2a2e;color:#ddd;border:1px solid #444;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:13px}
+button:hover{background:#3a3a40}
+button:disabled{opacity:.4;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#bar{margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #333}
+.card{position:relative;border:1px solid #555;border-radius:5px;padding:5px 7px;background:#222226;cursor:pointer;min-width:96px;max-width:150px;font-size:12px}
+.card.L{border-color:#c98820;background:#2b2418}
+.card.E{border-color:#8a5fc0;background:#241f2e}
+.card.R{border-color:#3f6f9e}
+.rar{font-size:10px;margin-left:3px;opacity:.9}
+.rar.L{color:#f0b040}
+.rar.E{color:#c77dff}
+.rar.R{color:#6ab0f3}
+.rar.C{color:#888}
+.card:hover{border-color:#8ab}
+.card.sel{border-color:#fa3;background:#33291a}
+.card .n{font-weight:600;font-size:12px}
+.card .c{color:#9cf;font-size:11px}
+.card .t{color:#999;font-size:11px;margin-top:2px;max-height:44px;overflow:hidden}
+.card.dim{opacity:.45}
+.hero{border:1px solid #666;border-radius:5px;padding:6px 10px;background:#1e1e22;cursor:pointer;display:inline-block;min-width:150px}
+.hero.sel{border-color:#fa3}
+.hero .hp{color:#f66;font-weight:600}
+.hero .ar{color:#9cf}
+.board{min-height:76px;border:1px dashed #3a3a40;border-radius:5px;padding:6px;margin:6px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start}
+.board.hot{border-color:#fa3}
+.zone-label{color:#777;font-size:12px;margin-top:8px}
+#log{height:120px;overflow:auto;background:#111;border:1px solid #2a2a2e;border-radius:4px;padding:6px;font-size:12px;color:#999;margin-top:8px}
+.hidden{display:none}
+.pill{display:inline-block;padding:1px 6px;border-radius:9px;background:#333;font-size:11px;margin-left:4px}
+.tag-taunt{background:#6b5;border-radius:3px;padding:0 3px;color:#000;font-size:10px}
+.tag-shield{background:#fc3;border-radius:3px;padding:0 3px;color:#000;font-size:10px}
+.st-none{color:#a66}
+.st-part{color:#d9a441}
+.st-legend{font-size:11px;color:#888;margin-top:6px}
+.grid{display:flex;gap:10px;margin-top:10px}
+.col{flex:1;min-width:260px}
+.scroll{height:62vh;overflow:auto;border:1px solid #2a2a2e;border-radius:5px;padding:6px}
+#chooseBox{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:20;
+  background:#222226;border:1px solid #fa3;border-radius:8px;padding:10px 12px;
+  box-shadow:0 6px 24px #000a;max-width:760px}
+#chooseBox .ct{color:#fa3;font-size:12px;margin-bottom:8px}
+#chooseBox button{margin:0 6px 6px 0}
+.tag-choose{background:#3a6b5c;border-radius:3px;padding:0 3px;color:#cfe;font-size:10px}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <div class="row">
+    <span>职业</span>
+    <select id="cls"></select>
+    <button onclick="randomDeck()">随机卡组</button>
+    <button onclick="clearDeck()">清空</button>
+    <span>卡组 <b id="cnt">0</b>/30</span>
+    <button id="go" onclick="startGame()" disabled>开始对战</button>
+    <button onclick="backToDeck()" class="hidden" id="back">返回组卡</button>
+    <span id="hint" style="color:#fa3"></span>
+  </div>
+</div>
+
+<!-- 组卡视图 -->
+<div id="viewDeck">
+  <div class="grid">
+    <div class="col">
+      <div class="zone-label" id="poolLabel">卡池（点击加入卡组）</div>
+      <div class="scroll" id="pool"></div>
+    </div>
+    <div class="col">
+      <div class="zone-label">我的卡组（点击移除）</div>
+      <div class="scroll" id="mydeck"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 对战视图 -->
+<div id="viewGame" class="hidden">
+  <div class="zone-label">对手</div>
+  <div class="row">
+    <div class="hero" id="foeHero" onclick="pick('foe',-1)"></div>
+    <span class="pill">手牌 <b id="foeHand">0</b></span>
+    <span class="pill">牌库 <b id="foeDeck">0</b></span>
+  </div>
+  <div class="board" id="foeBoard"></div>
+
+  <div class="board" id="meBoard"></div>
+  <div class="row">
+    <div class="hero" id="meHero" onclick="selHero()"></div>
+    <span class="pill">法力 <b id="mana">0</b>/<b id="maxmana">0</b></span>
+    <span class="pill">牌库 <b id="meDeck">0</b></span>
+    <button id="hpBtn" onclick="usePower()">英雄技能 (2费)</button>
+    <button onclick="endTurn()">结束回合</button>
+    <span id="timer" style="color:#fa3;font-weight:600"></span>
+  </div>
+
+  <div class="zone-label">手牌（点击选中 → 点目标/点己方战场出牌）</div>
+  <div class="board" id="hand"></div>
+  <div id="log"></div>
+</div>
+
+<div id="chooseBox" class="hidden"></div>
+
+<script>
+let ALL=[], DECK=[], S=null, SEL=null, CN={}, HP={};
+
+async function api(path, body){
+  const opt = body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {};
+  const r = await fetch(path, opt);
+  return r.json();
+}
+
+async function loadPool(){
+  const d = await api('/api/cards?cls='+document.getElementById('cls').value);
+  ALL = d.cards;
+  const sel = document.getElementById('cls');
+  d.classes.forEach(c=>{CN[c.id]=c.name});
+  HP = d.hero_powers || {};
+  if(sel.options.length===0){
+    d.classes.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;sel.appendChild(o)});
+    sel.value='MAGE';
+  }
+  drawPool();
+}
+
+const RAR_CN={LEGENDARY:'传说',EPIC:'史诗',RARE:'稀有',COMMON:'普通'};
+const RAR_CODE={LEGENDARY:'L',EPIC:'E',RARE:'R',COMMON:'C'};
+function rarTag(c){
+  const code=RAR_CODE[c.rarity]||'C';
+  return `<span class="rar ${code}">${RAR_CN[c.rarity]||''}</span>`;
+}
+function stTag(c){
+  if(!c.ok) return '<span class="st-none">白板</span>';
+  if(c.partial) return '<span class="st-part">部分</span>';
+  return '';
+}
+function cardHtml(c, dim){
+  const cost = `<span class="c">${c.cost}</span>`;
+  const st = (c.type==='MINION') ? `<b>${c.atk}/${c.hp}</b>` : (c.type==='WEAPON'?`${c.atk}/${c.hp}`:'法术');
+  const cn = (c.cls && c.cls!=='NEUTRAL') ? `<span class="pill">${CN[c.cls]||c.cls}</span>` : '';
+  const code = RAR_CODE[c.rarity]||'C';
+  return `<div class="card ${code} ${dim?'dim':''}" onclick="add('${c.cid}')">
+    <div class="n">${cost} ${c.name}${rarTag(c)}</div>
+    <div>${st} ${stTag(c)}${cn}</div>
+    <div class="t">${(c.text||'').replace(/</g,'&lt;')}</div></div>`;
+}
+
+function drawPool(){
+  document.getElementById('pool').innerHTML = ALL.map(c=>cardHtml(c,false)).join('');
+  const full = ALL.filter(c=>c.ok && !c.partial).length;
+  const part = ALL.filter(c=>c.ok && c.partial).length;
+  const blank = ALL.filter(c=>!c.ok).length;
+  document.getElementById('poolLabel').innerHTML =
+    `卡池 ${ALL.length} 张 — 完整效果 <b style="color:#8f8">${full}</b> · ` +
+    `部分效果 <b class="st-part">${part}</b> · 白板 <b class="st-none">${blank}</b>`;
+  const cnt={}; DECK.forEach(c=>cnt[c]=(cnt[c]||0)+1);
+  document.getElementById('mydeck').innerHTML = Object.keys(cnt).map(cid=>{
+    const c = ALL.find(x=>x.cid===cid) || {cid,name:cid,cost:'?',text:'',type:''};
+    return `<div class="card" onclick="remove('${cid}')"><div class="n">${cnt[cid]}x ${c.name}</div><div class="c">${c.cost}</div></div>`;
+  }).join('');
+  document.getElementById('cnt').textContent = DECK.length;
+  document.getElementById('go').disabled = DECK.length!==30;
+}
+
+function add(cid){
+  const card = ALL.find(x=>x.cid===cid);
+  const max = (card && card.rarity==='LEGENDARY') ? 1 : 2;   // 传说限 1 张
+  const same = DECK.filter(c=>c===cid).length;
+  if(DECK.length>=30 || same>=max){
+    document.getElementById('hint').textContent = same>=max ? `这${RAR_CN[card?.rarity]||'张'}卡最多带 ${max} 张` : '';
+    return;
+  }
+  DECK.push(cid); drawPool();
+}
+function remove(cid){ const i=DECK.lastIndexOf(cid); if(i>=0){DECK.splice(i,1); drawPool();} }
+function clearDeck(){ DECK=[]; drawPool(); }
+async function randomDeck(){ const d=await api('/api/random_deck',{cls:document.getElementById('cls').value}); DECK=d.deck; drawPool(); }
+
+async function startGame(){
+  const r = await api('/api/start',{deck:DECK, cls:document.getElementById('cls').value});
+  document.getElementById('viewDeck').classList.add('hidden');
+  document.getElementById('viewGame').classList.remove('hidden');
+  document.getElementById('back').classList.remove('hidden');
+  document.getElementById('go').disabled=true;
+  SEL=null; render(r.state, r.hp_used);
+}
+function backToDeck(){
+  document.getElementById('viewGame').classList.add('hidden');
+  document.getElementById('viewDeck').classList.remove('hidden');
+  document.getElementById('back').classList.add('hidden');
+  document.getElementById('go').disabled = DECK.length!==30;
+}
+
+function mHtml(m, side, i){
+  const tags = (m.taunt?'<span class="tag-taunt">嘲讽</span>':'') + (m.shield?'<span class="tag-shield">圣盾</span>':'') + (m.frozen?'❄':'');
+  const atk = m.attackable ? '<span style="color:#8f8">●</span>' : '<span style="color:#666">○</span>';
+  return `<div class="card ${RAR_CODE[m.rarity]||'C'}" onclick="pick('${side}',${i})">
+    <div class="n">${atk} ${m.name} ${tags}</div>
+    <div><b>${m.atk}/${m.hp}</b></div>
+    <div class="t">${(m.text||'').replace(/</g,'&lt;')}</div></div>`;
+}
+
+function render(s, hpUsed){
+  S=s;
+  const me=s.me, foe=s.foe;
+  const heroLine = (p, mine) => {
+    const wp = p.weapon ? `<span class="ar">武器 ${p.weapon.name} ${p.weapon.atk}/${p.weapon.durability}</span>` : '';
+    const atk = p.hero_atk>0
+      ? (mine ? (p.hero_can_attack?'<span style="color:#8f8">●</span>':'<span style="color:#666">○</span>') : '') + ` <b style="color:#fd6">⚔${p.hero_atk}</b>`
+      : '';
+    const sec = p.secrets>0 ? `<span class="ar" title="场上奥秘数量">🔒${p.secrets}</span>` : '';
+    const ovl = p.locked_mana>0 ? `<span class="ar" title="本回合被过载锁住的水晶">过载${p.locked_mana}</span>` : '';
+    const hn = (p.hero_name && p.hero_name!==p.name) ? `<span class="pill">${p.hero_name}</span>` : '';
+    const fz = p.frozen ? '<span class="ar" title="被冻结：本回合不能攻击">❄冻结</span>' : '';
+    return `${p.name} <span class="hp">${p.hp}</span> ${p.armor?'<span class="ar">'+p.armor+'甲</span>':''}${atk} ${wp}${sec}${ovl}${hn}${fz}`;
+  };
+  document.getElementById('foeHero').innerHTML = heroLine(foe, false);
+  document.getElementById('meHero').innerHTML = heroLine({...me, name:`我（${CN[me.cls]||''}）`}, true);
+  document.getElementById('foeHand').textContent = foe.hand.length;
+  document.getElementById('foeDeck').textContent = foe.deck;
+  document.getElementById('meDeck').textContent = me.deck;
+  document.getElementById('mana').textContent = me.mana;
+  document.getElementById('maxmana').textContent = me.max_mana;
+  const hpBtn = document.getElementById('hpBtn');
+  hpBtn.disabled = hpUsed || me.mana<2 || s.over;
+  hpBtn.title = HP[me.cls] || '';
+  document.getElementById('foeBoard').innerHTML = foe.board.map((m,i)=>mHtml(m,'foe',i)).join('');
+  document.getElementById('meBoard').innerHTML = me.board.map((m,i)=>mHtml(m,'me',i)).join('');
+  document.getElementById('hand').innerHTML = me.hand.map((c,i)=>
+    `<div class="card ${RAR_CODE[c.rarity]||'C'} ${c.playable===false?'dim':''} ${SEL&&SEL.kind==='hand'&&SEL.i===i?'sel':''}" onclick="selHand(${i})">
+      <div class="n"><span class="c">${c.cost}</span> ${c.name}${rarTag(c)}${(c.choose&&c.choose.length)?'<span class="tag-choose">抉择</span>':''}</div>
+      <div>${c.type==='MINION'?`<b>${c.atk}/${c.hp}</b>`:(c.type==='WEAPON'?`${c.atk}/${c.hp}`:'法术')}</div>
+      <div class="t">${(c.text||'').replace(/</g,'&lt;')}</div></div>`).join('');
+  document.getElementById('log').innerHTML = (s.log||[]).slice().reverse().map(l=>l).join('<br>');
+  document.getElementById('hint').textContent = s.over ? (s.winner==='你'?'★ 你赢了':'你输了') : (SEL? '选择目标…' : '');
+  // 诺兹多姆：双方回合限时
+  if(s.timer>0 && s.cur===0 && !s.over) startTimer(s.timer); else stopTimer();
+}
+
+let TMR=null, TLEFT=0;
+function stopTimer(){
+  if(TMR){ clearInterval(TMR); TMR=null; }
+  const el=document.getElementById('timer'); if(el) el.textContent='';
+}
+function startTimer(sec){
+  if(TMR) return;                       // 已经在倒数，别重开
+  TLEFT=sec;
+  const el=document.getElementById('timer');
+  if(el) el.textContent=`⏳ ${TLEFT}s`;
+  TMR=setInterval(()=>{
+    TLEFT--;
+    if(el) el.textContent=`⏳ ${TLEFT}s`;
+    if(TLEFT<=0){ stopTimer(); endTurn(); }   // 时间到自动结束回合
+  },1000);
+}
+
+function selHand(i){
+  const c = S.me.hand[i];
+  SEL = {kind:'hand', i}; render(S, document.getElementById('hpBtn').disabled);
+  if(c.choose && c.choose.length){          // 抉择牌：先选效果
+    openChoose(i, c.choose);
+    document.getElementById('hint').textContent = '抉择：先选一个效果';
+    return;
+  }
+  document.getElementById('hint').textContent = '点击目标，或点己方战场区出牌';
+}
+
+function openChoose(i, opts){
+  const box = document.getElementById('chooseBox');
+  box.innerHTML = '<div class="ct">抉择 —— 选一个效果</div>' +
+    opts.map((o,k)=>`<button onclick="pickChoice(${i},${k})">${o.label}</button>`).join('') +
+    '<button onclick="closeChoose()">取消</button>';
+  box.classList.remove('hidden');
+}
+function closeChoose(){
+  document.getElementById('chooseBox').classList.add('hidden');
+  SEL=null;
+  document.getElementById('hint').textContent='';
+}
+
+async function pickChoice(i, k){
+  document.getElementById('chooseBox').classList.add('hidden');
+  const opt = S.me.hand[i].choose[k];
+  if(opt.tgt){                              // 这个选项要指定目标 → 进选目标流程
+    SEL = {kind:'hand', i, choice:k};
+    render(S, document.getElementById('hpBtn').disabled);
+    document.getElementById('hint').textContent = `已选「${opt.label}」→ 点击目标`;
+    return;
+  }
+  const r = await api('/api/play',{idx:i, choice:k, target:null});
+  after(r);
+}
+
+async function pick(side, i){
+  if(!SEL){
+    if(side==='me' && i>=0){ SEL={kind:'board', i}; render(S,document.getElementById('hpBtn').disabled); document.getElementById('hint').textContent='点击敌方随从或英雄攻击'; }
+    return;
+  }
+  const t = {side, i};
+  if(SEL.kind==='hand'){
+    const r = await api('/api/play',{idx:SEL.i, target:t, choice:SEL.choice});
+    after(r);
+  } else if(SEL.kind==='board'){
+    const r = await api('/api/attack',{src:SEL.i, target:t});
+    after(r);
+  } else if(SEL.kind==='power'){
+    const r = await api('/api/heropower',{target:t});
+    after(r);
+  } else if(SEL.kind==='hero'){
+    const r = await api('/api/heroattack',{target:t});
+    after(r);
+  }
+}
+
+// 点己方战场空白处 = 打出无目标牌
+document.getElementById('meBoard').addEventListener('click', async e=>{
+  if(e.target.id!=='meBoard') return;
+  if(SEL && SEL.kind==='hand'){
+    const r = await api('/api/play',{idx:SEL.i, target:null, choice:SEL.choice});
+    after(r);
+  }
+});
+
+function usePower(){
+  SEL={kind:'power'};
+  document.getElementById('hint').textContent='点击目标（或点自己英雄）';
+}
+
+// 点自己英雄 = 出牌时当作目标（治疗/增益），否则选中英雄去攻击
+function selHero(){
+  const me = S && S.me;
+  if(!me) return;
+  if(SEL && SEL.kind==='hand'){ pick('me',-1); return; }
+  if(me.hero_atk>0 && me.hero_can_attack){
+    SEL={kind:'hero'}; render(S, document.getElementById('hpBtn').disabled);
+    document.getElementById('hint').textContent='点击敌方随从或英雄进行攻击';
+  }else{
+    document.getElementById('hint').textContent = me.hero_atk>0 ? '本回合已攻击过' : '没有攻击力（需装备武器或德鲁伊变脸）';
+  }
+}
+
+async function endTurn(){ const r=await api('/api/end',{}); after(r); }
+
+function after(r){
+  SEL=null;
+  document.getElementById('chooseBox').classList.add('hidden');
+  if(r.state) render(r.state, r.hp_used);
+  document.getElementById('hint').textContent = r.state && r.state.over ? (r.state.winner==='你'?'★ 你赢了':'你输了') : '';
+}
+
+document.getElementById('cls').addEventListener('change', ()=>{ DECK=[]; loadPool(); });
+loadPool();
+</script>
+</body>
+</html>

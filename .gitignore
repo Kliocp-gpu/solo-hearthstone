@@ -1,0 +1,10 @@
+# 卡表缓存（gen_cards.py 自动下载，约 11MB，不进仓库）
+.cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
