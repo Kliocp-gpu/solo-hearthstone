@@ -1189,5 +1189,105 @@ check("英雄被冻结时不能攻击",
 g.end_turn()
 check("英雄冻结在自己的回合结束时解除", not p.frozen, f"frozen={p.frozen}")
 
+print("=== 潜行规则 / 后手补偿 ===")
+
+# 潜行不能被攻击
+g = newgame()
+p, f = g.players
+st = put(g, f, by_name("冰风雪人"), stealth=True)
+atk = put(g, p, by_name("冰风雪人"))
+ok_attack = g.attack(atk, st)
+check("潜行随从不能被攻击", not ok_attack and st.hp == 5, f"返回={ok_attack} hp={st.hp}")
+
+# 潜行嘲讽不挡打脸
+g = newgame()
+p, f = g.players
+put(g, f, by_name("森金持盾卫士"), stealth=True)          # 潜行 + 嘲讽
+p.weapon = {"name": "测试刀", "atk": 5, "durability": 2}
+check("只有潜行嘲讽时仍然可以打脸", g.hero_attack(p, f) and f.hp == 25,
+      f"hp={f.hp}")
+
+# 可见嘲讽照旧挡脸（防止改过头）
+g = newgame()
+p, f = g.players
+put(g, f, by_name("森金持盾卫士"))
+p.weapon = {"name": "测试刀", "atk": 5, "durability": 2}
+check("可见嘲讽仍然挡住英雄攻击", not g.hero_attack(p, f) and f.hp == 30,
+      f"hp={f.hp}")
+
+# 法术不能指定敌方潜行随从，且不扣费
+g = newgame()
+p, f = g.players
+st = put(g, f, by_name("冰风雪人"), stealth=True)
+p.hand = [by_name("火球术")]
+r = g.play_card(p, 0, target=st)
+check("法术不能指定敌方潜行随从（不扣费）",
+      not r and st.hp == 5 and p.mana == 10,
+      f"返回={r} hp={st.hp} mana={p.mana}")
+
+# 自己的法术可以指定自己的潜行随从
+g = newgame()
+p = g.players[0]
+mine = put(g, p, by_name("冰风雪人"), stealth=True)
+p.hand = [by_name("火球术")]
+check("自己的法术可以指定自己的潜行随从", g.play_card(p, 0, target=mine),
+      f"hp={mine.hp}")
+
+# 英雄技能同样不能指定敌方潜行随从
+g = newgame()
+p, f = g.players
+st = put(g, f, by_name("冰风雪人"), stealth=True)
+p.cls = "HUNTER"
+check("英雄技能不能指定敌方潜行随从",
+      not g.hero_power(p, target=st) and st.hp == 5,
+      f"hp={st.hp}")
+
+# 扰魔（无法被法术指定）：敌我双方的法术都不行，但战吼/光环不受影响
+g = newgame()
+p, f = g.players
+fd = put(g, f, by_name("精灵龙"))
+p.hand = [by_name("火球术")]
+check("法术不能指定敌方精灵龙（扰魔）",
+      not g.play_card(p, 0, target=fd) and fd.hp == 2, f"hp={fd.hp}")
+g = newgame()
+p = g.players[0]
+mine = put(g, p, by_name("精灵龙"))
+p.hand = [by_name("火球术")]
+check("自己的法术也不能指定自己的精灵龙（扰魔）",
+      not g.play_card(p, 0, target=mine) and mine.hp == 2, f"hp={mine.hp}")
+g = newgame()
+p, f = g.players
+put(g, f, by_name("冰风雪人"))
+p.hand = [by_name("精灵龙")]
+check("敌方场上有精灵龙也不影响打别的目标", g.play_card(p, 0, target=f.board[0]),
+      f"hp={f.board[0].hp}")
+
+# 先祖之魂：死亡后召唤一个满血复制（不是原对象复活）
+g = newgame()
+p = g.players[0]
+m = put(g, p, by_name("冰风雪人"))
+p.hand = [by_name("先祖之魂")]
+g.play_card(p, 0, target=m)
+m.hp = 0
+g.check_deaths()
+back = [x for x in p.board if x.name == "冰风雪人"]
+check("先祖之魂：随从死亡后满血回到战场",
+      len(back) == 1 and back[0].hp == 5, [(x.name, x.hp) for x in p.board])
+
+# 后手幸运币
+g = Game(("你", "AI"), (["VAN_CS2_182"] * 30, ["VAN_CS2_182"] * 30), seed=5)
+first, second = g.players
+check("先手 3 张、后手 4 张 + 幸运币",
+      len(first.hand) == 3 and len(second.hand) == 5
+      and CARDS[second.hand[-1]]["name"] == "幸运币",
+      f"先={len(first.hand)} 后={len(second.hand)} "
+      f"{[CARDS[c]['name'] for c in second.hand]}")
+second.mana = 1
+g.turn = 1                                    # 轮到后手
+g.play_card(second, len(second.hand) - 1)     # 打出幸运币
+check("幸运币：0 费、本回合 +1 法力水晶（不涨上限）",
+      second.mana == 2 and second.max_mana == 0,
+      f"mana={second.mana}/{second.max_mana}")
+
 print(f"\n结果：{ok} 通过 / {fail} 失败")
 raise SystemExit(1 if fail else 0)

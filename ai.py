@@ -95,7 +95,10 @@ def _pick_target(g, p, t):
         pool = [m for m in p.board if "BEAST" in m.races]
         return pool[0] if pool else None
     if foe.board:
-        return max(foe.board, key=lambda m: (m.hp <= 4, _minion_value(m)))
+        pool = [m for m in foe.board
+                if not getattr(m, "elusive", False) and m.attackable]
+        if pool:
+            return max(pool, key=lambda m: (m.hp <= 4, _minion_value(m)))
     return foe
 
 
@@ -177,7 +180,7 @@ def ai_turn(g):
             acted = g.hero_attack(p, g.opp)              # 斩杀
         else:
             pool = taunts or foes
-            cand = [x for x in pool if x.alive and x.hp <= p.attack
+            cand = [x for x in pool if x.alive and x.attackable and x.hp <= p.attack
                     and x.atk < p.hp + p.armor]          # 白吃且不致死
             if cand:
                 acted = g.hero_attack(p, max(cand, key=_minion_value))

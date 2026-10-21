@@ -1484,6 +1484,9 @@ _tok("TOKEN_DRAKE", name="翡翠幼龙", cost=4, type="MINION", cls="NEUTRAL", t
      rarity="COMMON", atk=7, hp=6, races=["DRAGON"])
 _tok("TOKEN_SISTER", name="欢笑姐妹", cost=3, type="MINION", cls="NEUTRAL",
      text="无法被法术或英雄技能指定。", rarity="COMMON", atk=3, hp=5, elusive=True)
+_tok("TOKEN_COIN", name="幸运币", cost=0, type="SPELL", cls="NEUTRAL",
+     text="在本回合中，获得一个法力水晶。", rarity="COMMON",
+     effect=lambda c: gain_mana(c, 1))
 _tok("TOKEN_MURLOC", name="我是鱼人", cost=4, type="SPELL", cls="NEUTRAL",
      text="随机召唤3至5个1/1的鱼人。", rarity="COMMON",
      effect=lambda c: summon_token(c, 1, 1, c.g.rng.randint(3, 5), "鱼人"))
@@ -1688,6 +1691,8 @@ class Game:
             self.rng.shuffle(p.deck)
         self.players[0].hand = [self.players[0].deck.pop() for _ in range(3)]
         self.players[1].hand = [self.players[1].deck.pop() for _ in range(4)]
+        # 后手补偿：多抽一张之外，还给一张 0 费「幸运币」（本回合 +1 法力水晶）
+        self.players[1].hand.append("TOKEN_COIN")
         self.turn = 0
         self.log: list[str] = []
         self.over = False
@@ -1913,9 +1918,10 @@ class Game:
             return False
         if d.get("choose") and not (choice is not None and 0 <= choice < len(d["choose"])):
             choice = 0                 # 没选就默认第一个选项（AI / 误点兜底）
-        # 精灵龙这类「无法被法术指定」：目标不对就直接打不出（不扣费）
-        if (d.get("type") == "SPELL" and is_minion(target)
-                and getattr(target, "elusive", False)):
+        # 精灵龙这类「无法被法术指定」、以及敌方的潜行随从：目标不对就直接打不出（不扣费）
+        if d.get("type") == "SPELL" and is_minion(target) and (
+                getattr(target, "elusive", False)
+                or (target.stealth and target.owner_id != p.pid)):
             self.say(f"  {target.name} 无法被法术指定")
             return False
         p.mana -= cost
@@ -2032,7 +2038,7 @@ class Game:
         if t == "damaged":
             pool = [m for m in foe.board if m.hp < m.max_hp]
             return self.rng.choice(pool) if pool else None
-        pool = [m for m in foe.board if not getattr(m, "elusive", False)]
+        pool = [m for m in foe.board if not getattr(m, "elusive", False) and m.attackable]
         if pool:
             return self.rng.choice(pool)
         return foe
@@ -2042,6 +2048,8 @@ class Game:
         if attacker.attacks_left <= 0 or attacker.frozen or attacker.atk <= 0:
             return False
         if is_minion(tgt) and tgt not in self.foe_of(self.players[attacker.owner_id]).board:
+            return False
+        if is_minion(tgt) and not tgt.attackable:      # 潜行随从不能被攻击
             return False
         if not is_minion(tgt) and not attacker.can_attack_hero:
             return False
@@ -2088,9 +2096,11 @@ class Game:
         if atk <= 0:
             return False
         foe = self.foe_of(p)
-        taunts = [m for m in foe.board if m.taunt and m.alive]
+        taunts = [m for m in foe.board if m.taunt and m.alive and m.attackable]
         if is_minion(tgt):
             if tgt not in foe.board or not tgt.alive:
+                return False
+            if not tgt.attackable:                     # 潜行随从不能被攻击
                 return False
             if taunts and not tgt.taunt:            # 有嘲讽必须先打嘲讽
                 return False
@@ -2135,6 +2145,10 @@ class Game:
     # -- 英雄技能（2 费，按职业简化）--
     def hero_power(self, p: Player, target=None) -> bool:
         if p.hero_power_used or p.mana < 2 or self.over:
+            return False
+        # 敌方潜行随从不能被技能指定（技能在规则上等同法术）
+        if is_minion(target) and target.stealth and target.owner_id != p.pid:
+            self.say(f"  {target.name} 无法被指定")
             return False
         p.mana -= 2
         p.hero_power_used = True
