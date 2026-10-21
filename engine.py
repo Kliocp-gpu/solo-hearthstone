@@ -1408,10 +1408,8 @@ def ysera_awakens(c: Ctx):
 
 
 def summon_horde(c: Ctx):
-    """部落的力量：随机召唤一个传说随从"""
-    pool = [cid for cid, d in CARDS.items()
-            if d.get("type") == "MINION" and d.get("rarity") == "LEGENDARY"
-            and not d.get("token") and d.get("cost", 0) >= 5]
+    """部落的力量：随机召唤一名部落勇士（固定六张池，官方原文就是这句）"""
+    pool = [cid for cid in HORDE_CHAMPIONS if cid in CARDS]
     if pool:
         summon(c, c.g.rng.choice(pool))
 
@@ -1426,6 +1424,11 @@ def give_foe_tokens(c: Ctx, cid: str, n: int = 1):
 DREAM_CARDS = ["TOKEN_DREAM", "TOKEN_NIGHTMARE", "TOKEN_AWAKEN",
                "TOKEN_DRAKE", "TOKEN_SISTER"]
 CHORD_CARDS = ["TOKEN_MURLOC", "TOKEN_HORDE", "TOKEN_ROGUE"]
+
+# 「部落的力量」的召唤池：官方就是固定六名部落勇士，不是随机传说
+# 霜狼步兵 / 森金持盾卫士 / 萨尔玛先知 / 银月城卫兵 / 凯恩·血蹄 / 牛头人战士
+HORDE_CHAMPIONS = ["VAN_CS2_121", "VAN_CS2_179", "VAN_EX1_021",
+                   "VAN_EX1_023", "VAN_EX1_110", "VAN_EX1_390"]
 
 
 def add_random_dream(c: Ctx):
@@ -1482,10 +1485,10 @@ _tok("TOKEN_DRAKE", name="翡翠幼龙", cost=4, type="MINION", cls="NEUTRAL", t
 _tok("TOKEN_SISTER", name="欢笑姐妹", cost=3, type="MINION", cls="NEUTRAL",
      text="无法被法术或英雄技能指定。", rarity="COMMON", atk=3, hp=5, elusive=True)
 _tok("TOKEN_MURLOC", name="我是鱼人", cost=4, type="SPELL", cls="NEUTRAL",
-     text="随机召唤3或4个1/1的鱼人。", rarity="COMMON",
-     effect=lambda c: summon_token(c, 1, 1, c.g.rng.randint(3, 4), "鱼人"))
+     text="随机召唤3至5个1/1的鱼人。", rarity="COMMON",
+     effect=lambda c: summon_token(c, 1, 1, c.g.rng.randint(3, 5), "鱼人"))
 _tok("TOKEN_HORDE", name="部落的力量", cost=4, type="SPELL", cls="NEUTRAL",
-     text="随机召唤一个传说随从。", rarity="COMMON", effect=summon_horde)
+     text="随机召唤一名部落勇士。", rarity="COMMON", effect=summon_horde)
 _tok("TOKEN_ROGUE", name="潜行者最行", cost=4, type="SPELL", cls="NEUTRAL",
      text="造成4点伤害并抽一张牌。", rarity="COMMON", targeting="any",
      effect=lambda c: (damage(c, c.target, 4), draw(c, 1)))

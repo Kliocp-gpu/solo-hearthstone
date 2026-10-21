@@ -726,6 +726,36 @@ check("精英牛头人酋长给双方同一张和弦牌",
       len(p.hand) == 1 and len(f.hand) == 1 and p.hand[0] == f.hand[0],
       f"我={[CARDS[c]['name'] for c in p.hand]} 敌={[CARDS[c]['name'] for c in f.hand]}")
 
+# 和弦牌「我是鱼人」：官方是 3~5 个 1/1（以前写成 3 或 4）
+g = newgame()
+p = g.players[0]
+counts = set()
+for i in range(60):
+    g = newgame(seed=100 + i)
+    p = g.players[0]
+    p.hand = ["TOKEN_MURLOC"]
+    g.play_card(p, 0)
+    counts.add(len([m for m in p.board if m.name == "鱼人"]))
+check("我是鱼人：召唤 3~5 个 1/1 鱼人", counts and counts.issubset({3, 4, 5}),
+      f"实际出现过 {sorted(counts)} 个")
+
+# 和弦牌「部落的力量」：官方是固定六名部落勇士，不是随机传说
+g = newgame()
+p = g.players[0]
+got = set()
+for i in range(80):
+    g = newgame(seed=200 + i)
+    p = g.players[0]
+    p.hand = ["TOKEN_HORDE"]
+    g.play_card(p, 0)
+    got |= {m.name for m in p.board}
+champions = {"霜狼步兵", "森金持盾卫士", "萨尔玛先知", "银月城卫兵", "凯恩·血蹄", "牛头人战士"}
+check("部落的力量：只从六名部落勇士里召唤", got == champions,
+      f"召唤过 {sorted(got)}")
+legends = [n for n in got if CARDS[by_name(n)].get("rarity") == "LEGENDARY"
+           and n != "凯恩·血蹄"]
+check("部落的力量：不会召出其它传说", not legends, f"误召 {legends}")
+
 g = newgame()
 p = g.players[0]
 m = put(g, p, by_name("冰风雪人"))
