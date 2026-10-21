@@ -2063,9 +2063,13 @@ class Game:
         attacker.attacks_left -= 1
         attacker.stealth = False
         self.say(f"{attacker.name} 攻击 {getattr(tgt, 'name', '英雄')}")
+        # 交战伤害是同时结算的：反击伤害要取「打之前」的攻击力，
+        # 目标就算这一下被打死，也得把伤害打回来（以前用打完后查 tgt.alive，导致白嫖）
+        counter = tgt.atk if is_minion(tgt) else 0
         dmg_done = damage(c, tgt, attacker.atk)
-        if is_minion(tgt) and tgt.alive and not attacker.immune:
-            damage(c, attacker, tgt.atk)
+        if counter > 0 and not attacker.immune:
+            damage(c, attacker, counter)
+            self.say(f"  ↳ {attacker.name} 受到 {counter} 点反击伤害")
         self.emit("attack", src=attacker, target=tgt, amount=dmg_done)
         self.check_deaths()
         self.recalc()
@@ -2102,11 +2106,13 @@ class Game:
             self.check_deaths()
             self.recalc()
             return True
+        counter = tgt.atk if is_minion(tgt) else 0      # 同上：反击按交手前的攻击力算
         damage(c, tgt, atk)
         w = p.weapon
         immune_atk = bool(w and w.get("immune_attacking"))   # 角斗士的长弓
-        if is_minion(tgt) and tgt.alive and not immune_atk:  # 随从反击
-            damage(c, p, tgt.atk)
+        if counter > 0 and not immune_atk:                    # 随从反击
+            damage(c, p, counter)
+            self.say(f"  ↳ {p.name} 受到 {counter} 点反击伤害")
         if w:                                                 # 武器结算
             if is_minion(tgt) and w.get("no_durability_on_minion"):   # 血吼
                 w["atk"] = max(0, w["atk"] - 1)

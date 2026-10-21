@@ -796,6 +796,57 @@ put(g, p, by_name("诺兹多姆"))
 check("诺兹多姆在场时 state 带 15 秒限时", g.state(0)["timer"] == 15,
       f"timer={g.state(0)['timer']}")
 
+print("=== 交战结算（同时掉血）===")
+
+# 4/4 打死 2/2，自己必须照样吃 2 点反击伤害
+g = newgame()
+p, f = g.players
+a = put(g, p, by_name("碧蓝幼龙"))          # 4/4
+d = put(g, f, by_name("铁炉堡火枪手"))       # 2/2
+g.attack(a, d)
+check("4/4 打死 2/2 后自己掉 2（不能白嫖）",
+      not f.board and a.hp == 2, f"攻方={a.atk}/{a.hp} 敌场={len(f.board)}")
+
+# 双方都活着 → 互相掉血
+g = newgame()
+p, f = g.players
+a = put(g, p, by_name("冰风雪人"))           # 4/5
+d = put(g, f, by_name("森金持盾卫士"))        # 3/5
+g.attack(a, d)
+check("4/5 打 3/5：攻方 4/2、守方 3/1",
+      a.hp == 2 and d.hp == 1, f"攻方 {a.atk}/{a.hp} 守方 {d.atk}/{d.hp}")
+
+# 同归于尽
+g = newgame()
+p, f = g.players
+a = put(g, p, by_name("铁炉堡火枪手"))
+b = put(g, f, by_name("铁炉堡火枪手"))
+g.attack(a, b)
+check("2/2 打 2/2：双方同归于尽", not p.board and not f.board,
+      f"我场={len(p.board)} 敌场={len(f.board)}")
+
+# 英雄用武器打随从：随从死了英雄也要吃反击
+g = newgame()
+p, f = g.players
+p.hand = [by_name("血吼")]                   # 7/1，打随从不掉耐久
+g.play_card(p, 0)
+t = put(g, f, by_name("铁炉堡火枪手"))
+g.hero_attack(p, t)
+check("血吼打随从：随从死、英雄掉 2、武器 -1 攻且不掉耐久",
+      not f.board and p.hp == 28 and p.weapon["atk"] == 6
+      and p.weapon["durability"] == 1,
+      f"hp={p.hp} weapon={p.weapon} 敌场={len(f.board)}")
+
+# 角斗士的长弓：攻击时免疫，英雄不掉血
+g = newgame()
+p, f = g.players
+p.hand = [by_name("角斗士的长弓")]
+g.play_card(p, 0)
+t = put(g, f, by_name("铁炉堡火枪手"))
+g.hero_attack(p, t)
+check("角斗士的长弓攻击随从时英雄免疫反击",
+      not f.board and p.hp == 30, f"hp={p.hp} 敌场={len(f.board)}")
+
 print("=== 带条件的单张效果（23 张）===")
 
 # 冰枪术
