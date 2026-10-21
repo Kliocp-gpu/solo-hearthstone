@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-**v1.02** · a single-player Hearthstone you run locally · pure Python standard library + one HTML file · zero dependencies
+**v1.03** · a single-player Hearthstone you run locally · pure Python standard library + one HTML file · zero dependencies
 
 Play a browser-based Hearthstone against an AI. No art, no animation — just the **card effects**.
 All **382 cards** of the original 2014 set (Basic + Classic) are fully implemented:
@@ -22,7 +22,7 @@ primitives → turn resolution.
 - **Card pool** — the full 2014 set (Basic + Classic), 382 cards, official Simplified Chinese names and text
 - **Opponent** — built-in AI that calculates lethal, trades for board, and picks its own Choose One option
 - **Deck building** — pick a class → click cards to add / one-click random deck → 30 cards → play
-- **Verification** — 146 behavioral assertions + 1000-game self-test + card-text↔code audit
+- **Verification** — 161 behavioral assertions + 1000-game self-test + card-text↔code audit
 
 There are no images; a card face is text. All the effort went into
 "does this card actually do what its text says?"
@@ -123,7 +123,7 @@ Implemented mechanics:
 | `serve.py` | Local HTTP server + JSON API (`/api/start`, `/api/play`, `/api/attack`, …) |
 | `static/index.html` | The UI, single file (inline CSS/JS), no framework |
 | `selftest.py` | Smoke test: play N random-deck games, check for crashes and card-effect errors |
-| `test_cards.py` | Behavioral tests: 146 assertions that key cards really do what their text says |
+| `test_cards.py` | Behavioral tests: 161 assertions that key cards really do what their text says |
 | `audit.py` | Card-text ↔ code audit: if the text says "deal damage", the code must contain the corresponding call |
 
 ### Why cards are generated
@@ -158,7 +158,7 @@ Rule tables (in `gen_cards.py`):
 ## Verification
 
 ```bash
-python3 test_cards.py       # 146/146 (verifies behavior card by card, not just counting)
+python3 test_cards.py       # 161/161 (verifies behavior card by card, not just counting)
 python3 selftest.py 1000    # 1000 random games, 0 card-effect errors
 python3 audit.py            # card-text ↔ code audit, 0 empty shells
 ```
