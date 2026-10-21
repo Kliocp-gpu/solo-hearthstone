@@ -193,10 +193,16 @@ When you meet an unseen mechanic, add a rule-table entry and a primitive in `eng
 
 ---
 
-## Disclaimer
+## Legal
 
-A personal practice project, for local single-player use only. Not affiliated with Blizzard Entertainment.
-Contains no official artwork or asset files; card names and text come from the public
-[HearthstoneJSON](https://hearthstonejson.com/) dataset.
+**You must own a copy of the game.** Hearthstone is a trademark of Blizzard Entertainment, Inc.
+This is an **independent, non-commercial fan project**. It is not affiliated with, endorsed by,
+or sponsored by Blizzard Entertainment.
 
-The code is released under the **MIT** License — see [LICENSE](LICENSE).
+- The **code** in this repository is released under the MIT License (see [LICENSE](LICENSE)).
+  That license covers the code only — **not** Hearthstone, its card names, card texts,
+  artwork, or any other Blizzard intellectual property.
+- Card names and card texts come from the public [HearthstoneJSON](https://hearthstonejson.com/)
+  dataset and are used only for a local, single-player, non-commercial reimplementation of the rules.
+- **No official artwork, audio, or asset files** are included in this repository.
+- Use it only for personal, offline play — not for any commercial purpose.

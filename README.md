@@ -180,10 +180,15 @@ ENABLED = 2        # 1 → 2
 
 ---
 
-## 声明
+## 法律声明
 
-个人练习项目，仅本地单机自娱。与 Blizzard Entertainment 无关，
-不含任何官方美术资源与素材文件；卡名与卡面文本来自公开的
-[HearthstoneJSON](https://hearthstonejson.com/)。
+**使用前请确认已拥有正版游戏。** 《炉石传说》（Hearthstone）及相关商标归
+Blizzard Entertainment, Inc. 所有。本项目是**独立的、非商业性的粉丝作品**，
+与 Blizzard Entertainment 无任何关联，亦未获其认可、授权或赞助。
 
-代码以 **MIT** 许可发布（见 [LICENSE](LICENSE)）。
+- 本仓库的**代码**以 MIT 许可发布（见 [LICENSE](LICENSE)）。该许可仅覆盖代码本身，
+  **不覆盖**《炉石传说》及其卡名、卡面描述、美术资源等任何暴雪知识产权。
+- 卡名与卡面文本来自公开数据集 [HearthstoneJSON](https://hearthstonejson.com/)，
+  仅用于本地、单机、非商业性的规则复刻。
+- 仓库内**不含**任何官方美术、音频或素材文件。
+- 请仅在个人、离线环境下自用，勿用于商业用途。
