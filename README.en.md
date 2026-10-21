@@ -198,3 +198,5 @@ When you meet an unseen mechanic, add a rule-table entry and a primitive in `eng
 A personal practice project, for local single-player use only. Not affiliated with Blizzard Entertainment.
 Contains no official artwork or asset files; card names and text come from the public
 [HearthstoneJSON](https://hearthstonejson.com/) dataset.
+
+The code is released under the **MIT** License — see [LICENSE](LICENSE).

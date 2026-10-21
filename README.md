@@ -185,3 +185,5 @@ ENABLED = 2        # 1 → 2
 个人练习项目，仅本地单机自娱。与 Blizzard Entertainment 无关，
 不含任何官方美术资源与素材文件；卡名与卡面文本来自公开的
 [HearthstoneJSON](https://hearthstonejson.com/)。
+
+代码以 **MIT** 许可发布（见 [LICENSE](LICENSE)）。
