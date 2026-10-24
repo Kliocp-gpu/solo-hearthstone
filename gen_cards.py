@@ -993,6 +993,62 @@ def _num(s: str) -> int:
     return int(s) if s.isdigit() else DRAW_N.get(s, 1)
 
 
+
+# ============ 召唤物的名称与附加属性 ============
+# 生成器只读卡面文本，认不出「两只 2/3 并具有嘲讽的幽灵狼」这类细节，会漏掉名字/关键词，
+# 甚至把「为你的对手召唤」也当成为自己召唤。下面这张表按官方 zhCN 文本逐条补齐，
+# 键是卡 id；每次改动都要能在官方文本里找到依据。
+#   name  召唤物名字（不填会显示「召唤物」）
+#   taunt 官方文本写了「并具有嘲讽」
+#   side  'foe' = 为对手召唤
+#   fill  官方文本是「直到你的随从数量达到上限」→ 补到 7 个为止
+SUMMON_FIX = {
+    "VAN_CS2_027": {"name": "镜像", "taunt": True},        # 召唤两个0/2，并具有嘲讽的随从
+    "VAN_CS2_151": {"name": "侍从"},                       # 一个2/2的侍从
+    "VAN_CS2_196": {"name": "野猪"},                       # 一个1/1的野猪
+    "VAN_EX1_025": {"name": "机械幼龙"},                    # 一个2/1的机械幼龙
+    "VAN_EX1_110": {"name": "贝恩·血蹄"},                   # 一个4/5的贝恩·血蹄
+    "VAN_EX1_116": {"name": "雏龙", "side": "foe"},         # 为你的对手召唤两条1/1的雏龙
+    "VAN_EX1_131": {"name": "迪菲亚强盗"},                  # 一个2/1的迪菲亚强盗
+    "VAN_EX1_248": {"name": "幽灵狼", "taunt": True},       # 两只2/3并具有嘲讽的幽灵狼
+    "VAN_EX1_506": {"name": "鱼人斥候"},                    # 一个1/1的鱼人斥候
+    "VAN_EX1_534": {"name": "土狼"},                       # 两只2/2的土狼
+    "VAN_EX1_556": {"name": "损坏的傀儡"},                  # 一个2/1的损坏的傀儡
+    "VAN_EX1_562": {"name": "雏龙", "fill": 7},             # 1/1的雏龙，直到随从数量达到上限
+    "VAN_EX1_577": {"name": "皮普·急智", "side": "foe"},     # 为你的对手召唤一个3/3的皮普·急智
+    "VAN_EX1_597": {"name": "小鬼"},                       # 一个1/1的小鬼
+    "VAN_EX1_614": {"name": "埃辛诺斯之焰"},                 # 一个2/1的埃辛诺斯之焰
+    "VAN_NEW1_026": {"name": "紫罗兰学徒"},                  # 一个1/1的紫罗兰学徒
+    "VAN_NEW1_040": {"name": "豺狼人", "taunt": True},      # 一个2/2并具有嘲讽的豺狼人
+    "VAN_tt_010": {"name": "扰咒师"},                       # 召唤一个1/3的随从
+}
+
+SUMMON_RE = re.compile(r"summon_token\(c,\s*(\d+),\s*(\d+)(?:,\s*(\d+))?\)")
+
+
+def fix_summons(cid, line):
+    """按 SUMMON_FIX 补全数值型 summon_token 调用（名字/嘲讽/召唤方/数量）"""
+    conf = SUMMON_FIX.get(cid)
+    if not conf:
+        return line
+
+    def repl(m):
+        atk, hp = m.group(1), m.group(2)
+        n = m.group(3) or "1"
+        if conf.get("fill"):
+            n = f"max(0, {conf['fill']} - len(c.me.board))"
+        args = ["c", atk, hp, n]
+        if conf.get("name"):
+            args.append(repr(conf["name"]))
+        if conf.get("taunt"):
+            args.append("taunt=True")
+        if conf.get("side"):
+            args.append(f"side={conf['side']!r}")
+        return "summon_token(" + ", ".join(args) + ")"
+
+    return SUMMON_RE.sub(repl, line)
+
+
 def gen():
     print("拉取卡表 ...")
     en = fetch("enUS")
@@ -1273,7 +1329,7 @@ from engine import (register, damage, heal, summon, draw, buff, destroy, silence
             stats["partial"] += 1
         else:
             stats["full"] += 1
-        lines.append(f"register({cid!r}, {', '.join(kw)})")
+        lines.append(fix_summons(cid, f"register({cid!r}, {', '.join(kw)})"))
 
     open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")
     total = sum(stats.values())

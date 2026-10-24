@@ -240,11 +240,20 @@ def summon_random_cost(c: Ctx, cost: int):
         summon(c, c.g.rng.choice(pool))
 
 
-def summon_token(c: Ctx, atk: int, hp: int, n: int = 1, name: str = "召唤物", **kw):
-    """召唤 n 个数值随从（卡面上写的 N/M 小怪，没有对应卡牌数据）"""
+def summon_token(c: Ctx, atk: int, hp: int, n: int = 1, name: str = "召唤物",
+                 side: str = "own", **kw):
+    """召唤 n 个数值随从（卡面上写的 N/M 小怪，没有对应卡牌数据）
+
+    side='foe' 用于「为你的对手召唤……」的牌：火车王里诺艾、比斯巨兽。
+    """
+    ctx = c
+    if side == "foe":
+        ctx = Ctx(c.g, c.foe, c.me, target=c.target, src=c.src, amount=c.amount,
+                  event=c.event, event_src=c.event_src, combo=c.combo,
+                  card=c.card, spell=c.spell)
     out = []
     for _ in range(n):
-        m = summon(c, name, atk, hp, **kw)
+        m = summon(ctx, name, atk, hp, **kw)
         if m is not None:
             out.append(m)
     return out

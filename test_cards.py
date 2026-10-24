@@ -727,6 +727,66 @@ check("其中石爪有嘲讽、风语加法强",
       and p.spell_power == 1,
       f"嘲讽={board['石爪图腾'].taunt} 法强={p.spell_power}")
 
+print("=== 召唤物核对：名字 / 嘲讽 / 召唤方 / 数量 ===")
+g = newgame()
+p, f = g.players
+p.hand = ["VAN_CS2_027"]
+g.play_card(p, 0, target=None)
+check("镜像：两个 0/2 都带嘲讽（官方写了「并具有嘲讽」）",
+      [(m.name, m.taunt) for m in p.board] == [("镜像", True), ("镜像", True)],
+      [(m.name, m.taunt) for m in p.board])
+
+g = newgame()
+p, f = g.players
+p.hand = ["VAN_EX1_248"]
+g.play_card(p, 0, target=None)
+check("野性狼魂：两只幽灵狼都带嘲讽",
+      [(m.name, m.taunt) for m in p.board] == [("幽灵狼", True), ("幽灵狼", True)],
+      [(m.name, m.taunt) for m in p.board])
+
+g = newgame()
+p, f = g.players
+p.hand = ["VAN_NEW1_040"]
+g.play_card(p, 0, target=None)
+g.end_turn()
+check("霍格：回合结束召唤 2/2 嘲讽豺狼人",
+      any(m.name == "豺狼人" and m.taunt for m in p.board),
+      [(m.name, m.taunt) for m in p.board])
+
+g = newgame()
+p, f = g.players
+p.hand = ["VAN_EX1_562"]
+g.play_card(p, 0, target=None)
+check("奥妮克希亚：雏龙补到场上 7 个（本体+6）",
+      len(p.board) == 7 and len([m for m in p.board if m.name == "雏龙"]) == 6,
+      [(m.name, m.atk, m.hp) for m in p.board])
+
+g = newgame()
+p, f = g.players
+p.hand = ["VAN_EX1_116"]
+g.play_card(p, 0, target=None)
+check("火车王：两条雏龙是召唤给对手的（我方没有）",
+      len([m for m in f.board if m.name == "雏龙"]) == 2 and len(p.board) == 1,
+      f"对手={[m.name for m in f.board]} 我方={[m.name for m in p.board]}")
+
+g = newgame()
+p, f = g.players
+p.hand = ["VAN_EX1_577"]
+g.play_card(p, 0, target=None)
+p.board[0].hp = 0
+g.check_deaths()
+check("比斯巨兽：亡语的皮普·急智召唤给对手",
+      len([m for m in f.board if m.name == "皮普·急智"]) == 1,
+      [m.name for m in f.board])
+
+g = newgame()
+p, f = g.players
+p.hand = ["VAN_CS2_151"]
+g.play_card(p, 0, target=None)
+check("召唤物不再是「召唤物」（应有官方名字）",
+      all(m.name != "召唤物" for m in p.board),
+      [(m.name, m.cid) for m in p.board])
+
 print("=== 费用修正 / 武器战吼 ===")
 g = newgame()
 p = g.players[0]
