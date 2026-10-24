@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         plog("python = \(python)")
 
         let otherInstance = cleanupOwnedOrphans()
-        writeLock(server: nil, port: nil)
+        writeOwnLock(server: nil, port: nil, started: nil)
         guard let chosen = pickPort() else {
             showError("端口 8765–8800 全部被占用，无法启动本地服务。\n\n请先关掉占用这些端口的程序，或重启电脑后再试。")
             return
@@ -311,8 +311,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         do {
             try task.run()
             server = task
-            // 把服务 pid 和端口一起写进锁，下次异常退出后才有据可查
-            writeLock(server: task.processIdentifier, port: port)
+            // 服务 pid、端口、启动时刻一起记进本实例的记录，异常退出后才有据可查
+            writeOwnLock(server: task.processIdentifier, port: port,
+                         started: processStartTime(task.processIdentifier))
             plog("server started, pid=\(task.processIdentifier)")
         } catch {
             showError("无法启动 Python 服务：\(error.localizedDescription)")
@@ -345,83 +346,125 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         }.resume()
     }
 
-    // MARK: - 上一次运行留下的进程
+    // MARK: - 残留进程回收
     //
     // 原则：只结束「能证明是自己启动的」进程，证明不了一律不碰，改用别的端口。
     //
-    // 锁文件记录三样东西：本次 App 的 pid、本次拉起的服务进程 pid、服务所在的端口。
-    // 判定孤儿需要两条同时成立：
-    //   1. 锁里的 App pid 已经不存在（说明上次是崩溃或被 kill 掉，没走正常退出）
-    //   2. 锁里的服务 pid 还活着，**并且确实还在锁里记录的那个端口上监听**
-    // 只要有任何一条不满足，就认为「无法确认归属」，不发出任何信号。
+    // 每个实例一份记录：/tmp/hearthstone-app.d/<app-pid>.json
+    //   { "app": App pid, "server": 服务 pid, "port": 端口, "started": 服务启动时刻 }
     //
-    // 旧实现按端口范围（8765-8800）无差别 kill，会误杀另一个还在运行的实例的服务，
-    // 甚至误杀别的程序 —— 已经去掉。
+    // 为什么不用单一锁文件：B 启动会覆盖 A 的记录，B 退出时又把文件删掉，A 一旦崩溃就
+    // 再也定位不到自己的服务进程。一人一份之后，任何实例的残留都能被后来的实例认出来。
+    //
+    // 判定孤儿要三条同时成立：
+    //   1. 记录里的 App pid 已经不存在（上次崩溃或被 kill，没走正常退出）
+    //   2. 记录里的服务 pid 还活着，**并且确实还在记录的那个端口上监听**
+    //   3. 服务进程的启动时刻与记录相符（±2 秒）—— 排除 pid 被复用后恰好占同一端口
+    // 任何一条不满足就不发信号；记录已经没用了（主人死了）就只删记录、不动进程。
+    //
+    // 旧实现按端口范围（8765-8800）无差别 kill，会误杀另一个实例的服务甚至别的程序。
 
-    private let LOCK = "/tmp/hearthstone-app.lock"
+    private let LOCK_DIR = "/tmp/hearthstone-app.d"
+    private let LEGACY_LOCK = "/tmp/hearthstone-app.lock"   // 旧版单一锁，读到就当一条记录处理
 
     private struct LockInfo: Codable {
         var app: Int32
         var server: Int32?
         var port: Int?
+        var started: Double?
     }
 
-    private func readLock() -> LockInfo? {
-        guard let data = FileManager.default.contents(atPath: LOCK) else { return nil }
+    @discardableResult
+    private func ensureLockDir() -> String {
+        try? FileManager.default.createDirectory(atPath: LOCK_DIR,
+                                                 withIntermediateDirectories: true)
+        return LOCK_DIR
+    }
+
+    private func ownLockPath() -> String { "\(ensureLockDir())/\(getpid()).json" }
+
+    private func readLock(at path: String) -> LockInfo? {
+        guard let data = FileManager.default.contents(atPath: path) else { return nil }
         if let info = try? JSONDecoder().decode(LockInfo.self, from: data), info.app > 1 {
             return info
         }
-        // 兼容旧格式：文件里只有一个 pid
+        // 兼容旧格式：文件里只有一个纯 pid
         if let text = String(data: data, encoding: .utf8),
            let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 {
-            return LockInfo(app: pid, server: nil, port: nil)
+            return LockInfo(app: pid, server: nil, port: nil, started: nil)
         }
         return nil
     }
 
-    private func writeLock(server: Int32?, port: Int?) {
-        let info = LockInfo(app: getpid(), server: server, port: port)
+    private func allLockRecords() -> [(path: String, info: LockInfo)] {
+        var out: [(String, LockInfo)] = []
+        let dir = ensureLockDir()
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        for name in names.sorted() where name.hasSuffix(".json") {
+            let path = "\(dir)/\(name)"
+            if let info = readLock(at: path) { out.append((path, info)) }
+        }
+        if let legacy = readLock(at: LEGACY_LOCK) {
+            out.append((LEGACY_LOCK, legacy))
+        }
+        return out
+    }
+
+    private func writeOwnLock(server: Int32?, port: Int?, started: Double?) {
+        let info = LockInfo(app: getpid(), server: server, port: port, started: started)
         guard let data = try? JSONEncoder().encode(info) else { return }
-        try? data.write(to: URL(fileURLWithPath: LOCK), options: .atomic)
+        try? data.write(to: URL(fileURLWithPath: ownLockPath()), options: .atomic)
     }
 
-    private func clearLock() {
-        // 只有锁还属于自己才删：两个实例共用一个锁文件，别替别人清
-        if let info = readLock(), info.app == getpid() {
-            try? FileManager.default.removeItem(atPath: LOCK)
-        }
+    private func removeOwnLock() {
+        try? FileManager.default.removeItem(atPath: ownLockPath())
     }
 
-    /// 返回 true 表示「另一个实例正在运行」，调用方据此只做提示、不清理。
+    /// 返回 true 表示「还有别的实例在跑」，调用方据此给用户一句提示。
     private func cleanupOwnedOrphans() -> Bool {
-        guard let old = readLock() else {
-            plog("reap: 没有锁文件，不清理任何进程")
-            return false
+        var otherInstance = false
+        for rec in allLockRecords() {
+            let info = rec.info
+            if info.app == getpid() { continue }
+            if kill(info.app, 0) == 0 {
+                otherInstance = true
+                plog("reap: 实例 \(info.app) 仍在运行（端口 \(info.port.map(String.init) ?? "-")），不动它的进程")
+                continue
+            }
+            // 主人已经不在了。下面只回收「服务还活着且三项校验都过」的；
+            // 记录本身在明确无用（没服务 / 服务已死 / 已不在该端口）时才删，
+            // 校验没通过的情况留着记录，方便事后人工看。
+            guard let sp = info.server, sp > 1 else {
+                plog("reap: 实例 \(info.app) 没记录服务进程，只清记录")
+                try? FileManager.default.removeItem(atPath: rec.path)
+                continue
+            }
+            guard kill(sp, 0) == 0 else {
+                plog("reap: 实例 \(info.app) 记录的服务 \(sp) 已不存在，只清记录")
+                try? FileManager.default.removeItem(atPath: rec.path)
+                continue
+            }
+            guard let p = info.port, listensOn(pid: sp, port: p) else {
+                plog("reap: pid \(sp) 不在端口 \(info.port.map(String.init) ?? "-") 上监听，不动它，只清记录")
+                try? FileManager.default.removeItem(atPath: rec.path)
+                continue
+            }
+            if let want = info.started {
+                guard let got = processStartTime(sp), abs(got - want) < 2.0 else {
+                    plog("reap: pid \(sp) 启动时刻与记录不符（记录 \(info.started ?? -1) / 实际 \(processStartTime(sp) ?? -1)），疑似 pid 复用，不动它（记录保留）")
+                    continue
+                }
+            }
+            plog("reap: 回收残留服务 pid=\(sp)（端口 \(p)，原实例 \(info.app)，三项校验均通过）")
+            kill(sp, SIGTERM)
+            usleep(300_000)
+            if kill(sp, 0) == 0 { kill(sp, SIGKILL) }
+            try? FileManager.default.removeItem(atPath: rec.path)
         }
-        if old.app != getpid(), kill(old.app, 0) == 0 {
-            plog("reap: 另一个实例正在运行 (pid \(old.app), port \(old.port.map(String.init) ?? "-"))，不动任何监听者")
-            return true
-        }
-        guard let sp = old.server, let spPort = old.port, sp > 1 else {
-            plog("reap: 锁文件是异常退出留下的，但没有记录服务进程，无需清理")
-            return false
-        }
-        guard kill(sp, 0) == 0 else {
-            plog("reap: 记录的服务进程 \(sp) 已不存在")
-            return false
-        }
-        guard listensOn(pid: sp, port: spPort) else {
-            plog("reap: pid \(sp) 还活着但不在端口 \(spPort) 上监听，疑似 pid 复用，不动它")
-            return false
-        }
-        plog("reap: 清理上次残留的服务进程 pid=\(sp)（端口 \(spPort)，已确认归属）")
-        kill(sp, SIGTERM)
-        usleep(300_000)
-        if kill(sp, 0) == 0 { kill(sp, SIGKILL) }
-        return false
+        return otherInstance
     }
 
-    /// 归属校验：该 pid 是否真的在这个端口上 LISTEN。lsof 不可用时返回 false（保守）。
+    /// 归属校验之一：该 pid 是否真的在这个端口上 LISTEN。lsof 不可用时返回 false（保守）。
     private func listensOn(pid: Int32, port: Int) -> Bool {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
@@ -438,9 +481,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         }
     }
 
+    /// 归属校验之二：进程启动时刻（秒，带小数）。取不到返回 nil，按「无法确认」处理。
+    private func processStartTime(_ pid: Int32) -> Double? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        let rc = withUnsafeMutablePointer(to: &info) { ptr in
+            ptr.withMemoryRebound(to: CChar.self, capacity: size) { cptr in
+                sysctl(&mib, u_int(mib.count), cptr, &size, nil, 0)
+            }
+        }
+        guard rc == 0, size >= MemoryLayout<kinfo_proc>.stride else { return nil }
+        let tv = info.kp_proc.p_starttime
+        guard tv.tv_sec > 0 else { return nil }
+        return Double(tv.tv_sec) + Double(tv.tv_usec) / 1_000_000
+    }
+
     private func stopServer() {
         quitting = true
-        clearLock()
+        removeOwnLock()
         guard let task = server, task.isRunning else { return }
         plog("stopping server pid=\(task.processIdentifier)")
         task.terminate()
