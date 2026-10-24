@@ -50,6 +50,34 @@ double-click `停止游戏.command` to stop it.
 > If a local proxy prevents the page from loading: add `127.0.0.1` to the proxy bypass list,
 > or use another port: `PORT=9000 python3 serve.py`.
 
+## Desktop app (macOS)
+
+Running `python3 serve.py` means keeping a terminal around and stopping the server by hand.
+The app wrapper removes both steps:
+
+```bash
+./build_app.sh              # → build/Hearthstone.app (~380 KB)
+open build/Hearthstone.app
+```
+
+`app/main.swift` is a ~330-line Swift shell built on Cocoa and WebKit only. On launch it starts the
+bundled `serve.py` on a free port, waits until it answers, and shows the page in a `WKWebView`.
+Quitting terminates the server; a launch also reaps any server left behind by a forced quit or a crash.
+
+It does **not** bundle a Python interpreter (that alone would add ~60 MB). It looks for `python3`
+in `/opt/homebrew/bin`, `/usr/local/bin` and `/usr/bin`, requiring 3.9 or newer. Everything else —
+the engine, the card pool, the front end — lives inside the bundle, so the `.app` can be dragged
+into `/Applications` and run from there.
+
+- ad-hoc signed: the first launch may need right-click → Open
+- diagnostics: `/tmp/hearthstone-app.log` (override with `HS_APP_LOG`)
+- `HS_APP_QUIT_AFTER=<seconds>` makes the app quit itself (used by `test_app.sh`)
+- a second instance leaves the first one's server alone and takes the next free port;
+  a lock file in `/tmp` lets the next launch clean up after a crash
+
+---
+
+
 ---
 
 ## How to play

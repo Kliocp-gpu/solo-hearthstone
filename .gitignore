@@ -1,4 +1,4 @@
-# 卡表缓存（gen_cards.py 自动下载，约 11MB，不进仓库）
+# Card data cache (downloaded by gen_cards.py, ~11 MB, not committed)
 .cache/
 
 # Python
@@ -8,3 +8,6 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# Build output (regenerate with ./build_app.sh)
+build/

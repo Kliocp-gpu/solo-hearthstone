@@ -45,6 +45,32 @@ python3 serve.py
 >
 > 若本机开了代理导致打不开：把 `127.0.0.1` 加进代理白名单，或换端口 `PORT=9000 python3 serve.py`。
 
+## 桌面应用（macOS）
+
+用 `python3 serve.py` 意味着得留着一个终端窗口、退出还得手动停服务。打包成应用后这两步都没了：
+
+```bash
+./build_app.sh              # 生成 build/Hearthstone.app（约 380 KB）
+open build/Hearthstone.app
+```
+
+`app/main.swift` 是约 330 行的 Swift 外壳，只用 Cocoa 和 WebKit。启动时在空闲端口拉起内置的
+`serve.py`，等它响应后用 `WKWebView` 显示页面；退出时收掉服务进程，启动时也会清理上一次
+强制退出或崩溃留下的服务进程。
+
+它**不打包 Python 解释器**（那会让体积涨到 60 MB 以上），而是从 `/opt/homebrew/bin`、
+`/usr/local/bin`、`/usr/bin` 里找一个 3.9 及以上的 `python3`。除解释器以外的所有东西——
+引擎、卡池、前端——都在包里，所以这个 `.app` 可以直接拖进「应用程序」。
+
+- 采用 ad-hoc 签名：首次打开可能需要右键 → 打开
+- 诊断日志：`/tmp/hearthstone-app.log`（可用 `HS_APP_LOG` 改路径）
+- `HS_APP_QUIT_AFTER=<秒>` 可让应用自己退出（`test_app.sh` 用它做冒烟）
+- 同时开第二个实例不会打断第一个：第二个会改用下一个空闲端口；
+  崩溃留下的服务进程靠 `/tmp` 里的锁文件在下次启动时清理
+
+---
+
+
 ---
 
 ## 怎么玩
