@@ -2370,16 +2370,16 @@ class Game:
 # ============ 英雄技能召唤的图腾 ============
 # 这四张是萨满英雄技能「图腾召唤」的产物，不属于任何可收集卡池（VANILLA 里没有它们的本体），
 # 所以直接由引擎注册，不写进 cards.py —— 那个文件是 gen_cards.py 的生成产物，会被覆盖。
-register("TOKEN_TOTEM_HEAL", name="治疗图腾", cost=0, type="MINION", token=True,
+register("TOKEN_TOTEM_HEAL", name="治疗图腾", cost=1, type="MINION", token=True,
          rarity="FREE", en="Healing Totem", cls="SHAMAN", races=["TOTEM"], atk=0, hp=2,
-         text="在你的回合结束时，为所有友方角色恢复1点生命值。",
-         trigger=[("turn_end", lambda c: (aoe(c, lambda x: heal(c, x, 1), side="own"),
-                                          heal(c, c.me, 1)))])
+         text="在你的回合结束时，为所有友方随从恢复1点生命值。",
+         trigger=[("turn_end", lambda c: aoe(c, lambda x: heal(c, x, 1), side="own"))])
 
-register("TOKEN_TOTEM_SEARING", name="灼热图腾", cost=0, type="MINION", token=True,
+# 灼热图腾就是一张 1/1 白板（和圣骑士的白银之手新兵一样），没有任何效果。
+# 网上「0/1、战吼造成 1 点伤害」的说法来自开发早期设定，不是正式版本。
+register("TOKEN_TOTEM_SEARING", name="灼热图腾", cost=1, type="MINION", token=True,
          rarity="FREE", en="Searing Totem", cls="SHAMAN", races=["TOTEM"], atk=1, hp=1,
-         text="在你的回合结束时，对一个随机敌人造成1点伤害。",
-         trigger=[("turn_end", lambda c: damage_random_enemy(c, 1))])
+         text="")
 
 register("TOKEN_TOTEM_STONECLAW", name="石爪图腾", cost=0, type="MINION", token=True,
          rarity="FREE", en="Stoneclaw Totem", cls="SHAMAN", races=["TOTEM"], atk=0, hp=2,
