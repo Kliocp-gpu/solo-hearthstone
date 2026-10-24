@@ -125,6 +125,7 @@ Implemented mechanics:
 | `selftest.py` | Smoke test: play N random-deck games, check for crashes and card-effect errors |
 | `test_cards.py` | Behavioral tests: 161 assertions that key cards really do what their text says |
 | `test_api.py` | HTTP-layer regression: 45 assertions on error codes, reasons, and state preservation |
+| `test_play_http.py` | Full games over HTTP: 3 complete matches, invariants checked every action |
 | `audit.py` | Card-text ↔ code audit: if the text says "deal damage", the code must contain the corresponding call |
 
 ### Why cards are generated
@@ -161,6 +162,7 @@ Rule tables (in `gen_cards.py`):
 ```bash
 python3 test_cards.py       # 161/161 (verifies behavior card by card, not just counting)
 python3 test_api.py         # 45/45 (HTTP layer: error codes, reasons, state untouched on failure)
+python3 test_play_http.py   # 17/17 (3 complete games driven through the HTTP API)
 python3 selftest.py 1000    # 1000 random games, 0 card-effect errors
 python3 audit.py            # card-text ↔ code audit, 0 empty shells
 ```
@@ -173,6 +175,20 @@ must contain the corresponding call, or the audit fails.
 "you shouldn't click that" or "the program did nothing" is only observable at the HTTP layer —
 it guarantees every failure carries an error code and a human-readable reason, and that a failed
 action leaves the board completely untouched (no mana spent, no card lost, no selection cleared).
+
+### Regression log
+
+Every bug that was fixed left a check behind, so it cannot silently come back:
+
+| Bug | Locked down by |
+|---|---|
+| Combat never applied retaliation damage (v1.02) | `test_cards.py` — combat settlement (5 checks) |
+| Stealth could be attacked / a stealthed taunt blocked the hero / spells could target stealth (v1.03) | `test_cards.py` — stealth rules (6 checks) |
+| The second player had no Coin (v1.03) | `test_cards.py` — second-player compensation (2 checks) |
+| Two Power Chord cards were implemented wrong (v1.03) | `test_cards.py` — chord card pool (3 checks) |
+| Failed actions gave no feedback and cleared the board (v1.04) | `test_api.py` — error contract (10 checks) |
+| Decks were only size-checked; the AI deck did not match its class (v1.05) | `test_api.py` — deck legality / AI consistency (9 checks) |
+| The full web game path had no coverage | `test_play_http.py` — 3 complete games plus invariants (17 checks) |
 
 ---
 
