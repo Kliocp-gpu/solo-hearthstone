@@ -1,16 +1,12 @@
-# Web Hearthstone
+# Solo Hearthstone
 
 **English** | [简体中文](README.zh-CN.md)
 
-**v1.05** · a single-player Hearthstone you run locally · pure Python standard library + one HTML file · zero dependencies
+**v1.05** · single-player Hearthstone, fully offline · pure Python standard library + one HTML file
 
-Play a browser-based Hearthstone against an AI. No art, no animation — just the **card effects**.
-All **382 cards** of the original 2014 set (Basic + Classic) are fully implemented:
-every card text does what it says, with zero placeholder cards.
-
-```
-python3 serve.py        # then open http://localhost:8765
-```
+Play Hearthstone against an AI on your own machine — as a macOS app, or from the command line.
+No art, no animation — just the **card effects**. All **382 cards** of the original 2014 set
+(Basic + Classic) are fully implemented: every card text does what it says, no placeholder cards.
 
 ---
 
@@ -21,8 +17,8 @@ primitives → turn resolution.
 
 - **Card pool** — the full 2014 set (Basic + Classic), 382 cards, official Simplified Chinese names and text
 - **Opponent** — built-in AI that calculates lethal, trades for board, and picks its own Choose One option
-- **Deck building** — pick a class → click cards to add / one-click random deck → 30 cards → play
-- **Verification** — 161 behavioral assertions + 1000-game self-test + card-text↔code audit
+- **Deck building** — pick a class → search and filter → 30 cards → play; the server validates the deck
+- **Verification** — 161 behavioral assertions + 45 HTTP assertions + full-game regressions + card-text↔code audit
 
 There are no images; a card face is text. All the effort went into
 "does this card actually do what its text says?"
@@ -31,52 +27,43 @@ There are no images; a card face is text. All the effort went into
 
 ## Quick start
 
-Requires Python 3.9+ (standard library only — nothing to install).
+### macOS app (recommended)
 
 ```bash
 git clone https://github.com/Kliocp-gpu/web-hearthstone.git
 cd web-hearthstone
-python3 serve.py
+./build_app.sh
+open build/单机炉石.app
 ```
 
-Then open <http://localhost:8765>.
+After the first build, launch it from Finder or the Dock — the `.app` is self-contained apart from
+the interpreter and can be dragged into `/Applications`. It starts the bundled engine on a free
+port, shows it in a native window, and stops the server when you quit; a crash leaves nothing
+running behind. The shell is `app/main.swift`, about 330 lines, using only Cocoa and WebKit.
 
-**macOS**: you can also double-click `启动游戏.command` (starts the server and opens the browser);
-double-click `停止游戏.command` to stop it.
-
-> If macOS blocks the `.command` file the first time ("unidentified developer"):
-> right-click → Open → confirm once.
->
-> If a local proxy prevents the page from loading: add `127.0.0.1` to the proxy bypass list,
-> or use another port: `PORT=9000 python3 serve.py`.
-
-## Desktop app (macOS)
-
-Running `python3 serve.py` means keeping a terminal around and stopping the server by hand.
-The app wrapper removes both steps:
-
-```bash
-./build_app.sh              # → build/Hearthstone.app (~380 KB)
-open build/Hearthstone.app
-```
-
-`app/main.swift` is a ~330-line Swift shell built on Cocoa and WebKit only. On launch it starts the
-bundled `serve.py` on a free port, waits until it answers, and shows the page in a `WKWebView`.
-Quitting terminates the server; a launch also reaps any server left behind by a forced quit or a crash.
-
-It does **not** bundle a Python interpreter (that alone would add ~60 MB). It looks for `python3`
-in `/opt/homebrew/bin`, `/usr/local/bin` and `/usr/bin`, requiring 3.9 or newer. Everything else —
-the engine, the card pool, the front end — lives inside the bundle, so the `.app` can be dragged
-into `/Applications` and run from there.
+It does **not** bundle a Python interpreter (that alone would add ~60 MB), so it needs `python3`
+3.9 or newer — looked up in `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`.
 
 - ad-hoc signed: the first launch may need right-click → Open
 - diagnostics: `/tmp/hearthstone-app.log` (override with `HS_APP_LOG`)
-- `HS_APP_QUIT_AFTER=<seconds>` makes the app quit itself (used by `test_app.sh`)
-- a second instance leaves the first one's server alone and takes the next free port;
-  a lock file in `/tmp` lets the next launch clean up after a crash
+- `./test_app.sh` is a shell smoke test: launch → server up → auto-quit → no leftovers
 
----
+### Run from source (any OS)
 
+```bash
+python3 serve.py        # then open http://localhost:8765
+```
+
+Requires Python 3.9+ (standard library only — nothing to install).
+
+> If a local proxy prevents the page from loading: add `127.0.0.1` to the proxy bypass list,
+> or use another port: `PORT=9000 python3 serve.py`.
+
+### Fallback: double-click scripts (macOS)
+
+`启动游戏.command` starts the server and opens the browser; `停止游戏.command` stops it. Kept for
+machines where building the app is inconvenient. If macOS blocks the file on first use
+("unidentified developer"), right-click → Open.
 
 ---
 
@@ -156,6 +143,10 @@ Implemented mechanics:
 | `test_play_http.py` | Full games over HTTP: 3 complete matches, invariants checked every action |
 | `test_ui.py` | Static front-end checks: every id and handler referenced by the script exists |
 | `audit.py` | Card-text ↔ code audit: if the text says "deal damage", the code must contain the corresponding call |
+| `app/main.swift` | macOS app shell: starts the engine, hosts the page in `WKWebView`, stops it on quit |
+| `app/Info.plist` | Bundle metadata (name, identifier, ATS localhost exception) |
+| `build_app.sh` | Builds `build/单机炉石.app` (needs Xcode command line tools) |
+| `test_app.sh` | Shell smoke test: launch → server up → auto-quit → no leftovers |
 
 ### Why cards are generated
 

@@ -4,7 +4,7 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
-APP="build/Hearthstone.app"
+APP="build/单机炉石.app"
 BIN="$APP/Contents/MacOS/Hearthstone"
 LOG="/tmp/hearthstone-app-test.log"
 export HS_APP_LOG="$LOG"

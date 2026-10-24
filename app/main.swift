@@ -1,4 +1,4 @@
-// 网页炉石 · macOS 外壳
+// 单机炉石 · macOS 外壳
 //
 // 作用：双击即开。启动时拉起内置的 Python 服务、等它就绪、用 WKWebView 显示；
 // 关窗即退，同时把服务进程收掉。不需要终端，也不需要手动启停。
@@ -82,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window = NSWindow(contentRect: rect,
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
-        window.title = "网页炉石"
+        window.title = "单机炉石"
         window.minSize = NSSize(width: 900, height: 640)
         window.center()
         window.setFrameAutosaveName("MainWindow")
@@ -105,7 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         let appItem = NSMenuItem()
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "关于网页炉石",
+        appMenu.addItem(withTitle: "关于单机炉石",
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
                         keyEquivalent: "")
         appMenu.addItem(.separator())

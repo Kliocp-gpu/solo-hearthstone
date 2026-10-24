@@ -1,10 +1,10 @@
 #!/bin/bash
-# 把网页版打包成 macOS 应用：build/Hearthstone.app
+# 把游戏打包成 macOS 应用：build/单机炉石.app
 # 依赖：Xcode 命令行工具（swiftc）。不打包 Python 解释器，运行时用系统自带的 python3。
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP="build/Hearthstone.app"
+APP="build/单机炉石.app"
 GAME="$APP/Contents/Resources/game"
 BIN="$APP/Contents/MacOS/Hearthstone"
 

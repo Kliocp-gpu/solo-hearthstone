@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>网页炉石</string>
+    <string>单机炉石</string>
     <key>CFBundleDisplayName</key>
-    <string>网页炉石</string>
+    <string>单机炉石</string>
     <key>CFBundleExecutable</key>
     <string>Hearthstone</string>
     <key>CFBundleIdentifier</key>
-    <string>com.kliocp.web-hearthstone</string>
+    <string>com.kliocp.solo-hearthstone</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
