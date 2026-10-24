@@ -64,6 +64,11 @@ def main():
           and "resumeGame()" in js)
     check("组卡视图说明了「对局只保留在本次运行内」",
           "persistNote" in ids_defined and "退出 App 会丢" in src)
+    check("卡牌都带职业色标（中立=灰标，职业=职业色）",
+          "function clsTag" in js and "clsTag(c)" in js
+          and "'中立'" in js and "k-${c.cls" in js)
+    check("卡组列表的每一行也带职业色标",
+          "clsTag(c)" in js and "${c.cost} 费${clsTag(c)}" in js)
     check("App 外壳传来的 ?warn= 会被显示成提示条",
           "URLSearchParams(location.search)" in js and "get('warn')" in js)
 

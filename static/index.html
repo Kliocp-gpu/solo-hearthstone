@@ -35,6 +35,17 @@ button:disabled{opacity:.4;cursor:default}
 #log{height:120px;overflow:auto;background:#111;border:1px solid #2a2a2e;border-radius:4px;padding:6px;font-size:12px;color:#999;margin-top:8px}
 .hidden{display:none}
 .pill{display:inline-block;padding:1px 6px;border-radius:9px;background:#333;font-size:11px;margin-left:4px}
+/* 职业色标：每个职业一个颜色，中立给灰色 —— 组卡时一眼分清归属 */
+.pill.k-NEUTRAL{color:#9a9a9a;border:1px solid #4a4a4a}
+.pill.k-MAGE{color:#7fb3e8;border:1px solid #33547a}
+.pill.k-PRIEST{color:#e8e0d8;border:1px solid #6e6a62}
+.pill.k-WARLOCK{color:#c77dff;border:1px solid #5d3a80}
+.pill.k-PALADIN{color:#f0d048;border:1px solid #7a6a20}
+.pill.k-WARRIOR{color:#e87a70;border:1px solid #7a332c}
+.pill.k-DRUID{color:#e8a55c;border:1px solid #7a5020}
+.pill.k-ROGUE{color:#b0b8c4;border:1px solid #4a5058}
+.pill.k-HUNTER{color:#b8cc5c;border:1px solid #5a6a20}
+.pill.k-SHAMAN{color:#6cc8b8;border:1px solid #2c6a5c}
 .tag-taunt{background:#6b5;border-radius:3px;padding:0 3px;color:#000;font-size:10px}
 .tag-shield{background:#fc3;border-radius:3px;padding:0 3px;color:#000;font-size:10px}
 .tag-stealth{background:#79c;border-radius:3px;padding:0 3px;color:#000;font-size:10px}
@@ -251,6 +262,10 @@ function renderTabs(){
 
 const RAR_CN={LEGENDARY:'传说',EPIC:'史诗',RARE:'稀有',COMMON:'普通'};
 const RAR_CODE={LEGENDARY:'L',EPIC:'E',RARE:'R',COMMON:'C'};
+// 职业色标：每张牌都标归属（中立 = 灰色「中立」），翻页签时不会认错
+function clsTag(c){
+  return `<span class="pill k-${c.cls||'NEUTRAL'}">${c.cls==='NEUTRAL' ? '中立' : (CN[c.cls]||c.cls||'中立')}</span>`;
+}
 function rarTag(c){
   const code=RAR_CODE[c.rarity]||'C';
   return `<span class="rar ${code}">${RAR_CN[c.rarity]||''}</span>`;
@@ -284,7 +299,6 @@ function filteredPool(){
 function cardHtml(c){
   const cost = `<span class="c">${c.cost}</span>`;
   const st = (c.type==='MINION') ? `<b>${c.atk}/${c.hp}</b>` : (c.type==='WEAPON'?`${c.atk}/${c.hp}`:'法术');
-  const cn = (c.cls && c.cls!=='NEUTRAL') ? `<span class="pill">${CN[c.cls]||c.cls}</span>` : '';
   const code = RAR_CODE[c.rarity]||'C';
   const have = ownedCount(c.cid), max = ownedMax(c);
   const full = have>=max || DECK.length>=30;
@@ -293,7 +307,7 @@ function cardHtml(c){
   return `<div class="card ${code} ${full?'full':''}"${click}>
     ${badge}
     <div class="n">${cost} ${c.name}${rarTag(c)}</div>
-    <div>${st} ${stTag(c)}${cn}</div>
+    <div>${st} ${stTag(c)}${clsTag(c)}</div>
     <div class="t">${(c.text||'').replace(/</g,'&lt;')}</div></div>`;
 }
 
@@ -315,7 +329,7 @@ function drawPool(){
   document.getElementById('mydeck').innerHTML = Object.keys(cnt).map(cid=>{
     const c = ALL.find(x=>x.cid===cid) || {cid,name:cid,cost:'?',text:'',type:''};
     return `<div class="card" onclick="remove('${cid}')">
-      <div class="n">${cnt[cid]}x ${c.name}</div><div class="c">${c.cost} 费</div></div>`;
+      <div class="n">${cnt[cid]}x ${c.name}</div><div class="c">${c.cost} 费${clsTag(c)}</div></div>`;
   }).join('') || '<div class="st-legend">还没有卡牌，点左边卡池加入</div>';
 
   const left = 30 - DECK.length;

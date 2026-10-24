@@ -62,6 +62,10 @@ const checks = `(async ()=>{
   const tabs = document.getElementById('clsTabs').children;
   A(tabs.length===4, '页签 3 职业 + 通用（实际：' + tabs.map(t=>t.textContent).join(',') + '）');
   A(DECKCLASS==='MAGE' && VIEWCLS==='MAGE', '初始为法师');
+  A(document.getElementById('pool').innerHTML.includes('k-MAGE'),
+    '职业页里职业牌带职业色标');
+  A(document.getElementById('pool').innerHTML.includes('k-NEUTRAL'),
+    '职业页里中立牌也带「中立」色标');
 
   pickTab('NEUTRAL'); await sleep(20);
   A(VIEWCLS==='NEUTRAL' && DECKCLASS==='MAGE', '切通用后卡组职业不变');
