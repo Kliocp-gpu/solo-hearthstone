@@ -33,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private var gameDir: URL?
     private var quitting = false
     private var restartAttempts = 0
+    private var warnings: [String] = []        // 启动时要说给用户听的话（端口被占、另开了一个窗口）
+    private var occupiedPorts: [Int] = []      // 探测过程中被别人占着的端口，只用于提示，不据此杀进程
 
     // MARK: - 生命周期
 
@@ -54,9 +56,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         }
         plog("python = \(python)")
 
-        reapStaleListeners()
-        writeLock()
-        port = pickPort()
+        let otherInstance = cleanupOwnedOrphans()
+        writeLock(server: nil, port: nil)
+        guard let chosen = pickPort() else {
+            showError("端口 8765–8800 全部被占用，无法启动本地服务。\n\n请先关掉占用这些端口的程序，或重启电脑后再试。")
+            return
+        }
+        port = chosen
+        if otherInstance {
+            warnings.append("另一个「单机炉石」窗口正在运行，这一窗口改用端口 \(port)。两边的对局互不影响。")
+        }
+        if !occupiedPorts.isEmpty {
+            let list = occupiedPorts.map(String.init).joined(separator: "、")
+            warnings.append("端口 \(list) 已被其他进程占用，这一窗口改用 \(port)。没有结束任何不是本程序启动的进程。")
+        }
         plog("port = \(port)")
         startServer(python: python, dir: dir)
 
@@ -146,7 +159,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     private func loadGame() {
-        let url = URL(string: "http://127.0.0.1:\(port)/")!
+        var comps = URLComponents(string: "http://127.0.0.1:\(port)/")!
+        if !warnings.isEmpty {
+            // 端口被占/另开窗口这类情况，页面上给一句可读的提示，而不是只写日志
+            comps.queryItems = [URLQueryItem(name: "warn", value: warnings.joined(separator: " "))]
+        }
+        let url = comps.url!
         plog("load \(url.absoluteString)")
         web.load(URLRequest(url: url))
     }
@@ -192,12 +210,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     private func findPython() -> String? {
-        let candidates = [
+        var candidates = [
             "/opt/homebrew/bin/python3",
             "/usr/local/bin/python3",
             "/usr/bin/python3",
             "\(NSHomeDirectory())/.workbuddy/binaries/python/versions/3.13.12/bin/python3",
         ]
+        // 指定解释器时不再走回落链（测试「找不到 python3」这条路径也用它）
+        if let forced = ProcessInfo.processInfo.environment["HS_APP_PYTHON"] {
+            candidates = [forced]
+        }
         for path in candidates {
             guard FileManager.default.isExecutableFile(atPath: path) else { continue }
             let p = Process()
@@ -234,9 +256,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         return result == 0
     }
 
-    private func pickPort() -> Int {
-        for candidate in 8765..<8800 where portIsFree(candidate) { return candidate }
-        return 8765
+    /// 找第一个真正空闲的端口。占着的端口只记下来用于提示，不试图清掉占用者——
+    /// 那些进程是谁的没法证明，宁可换端口也不能误杀。
+    private func pickPort() -> Int? {
+        occupiedPorts = []
+        for candidate in 8765..<8800 {
+            if portIsFree(candidate) { return candidate }
+            occupiedPorts.append(candidate)
+        }
+        return nil
     }
 
     private func startServer(python: String, dir: URL) {
@@ -267,10 +295,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 guard let self = self, !self.quitting else { return }
                 self.server = nil
                 plog("server exited unexpectedly, status=\(proc.terminationStatus)")
-                if self.restartAttempts < 2 {
+                if self.restartAttempts < 2, let next = self.pickPort() {
                     self.restartAttempts += 1
-                    plog("restarting server (attempt \(self.restartAttempts))")
-                    self.port = self.pickPort()
+                    plog("restarting server (attempt \(self.restartAttempts)) on port \(next)")
+                    self.port = next
                     if let dir = self.gameDir, let py = self.findPython() {
                         self.startServer(python: py, dir: dir)
                         return
@@ -283,6 +311,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         do {
             try task.run()
             server = task
+            // 把服务 pid 和端口一起写进锁，下次异常退出后才有据可查
+            writeLock(server: task.processIdentifier, port: port)
             plog("server started, pid=\(task.processIdentifier)")
         } catch {
             showError("无法启动 Python 服务：\(error.localizedDescription)")
@@ -317,59 +347,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     // MARK: - 上一次运行留下的进程
     //
-    // 判断谁占着端口需要 ps，而 ps 在某些环境下不可用；改用锁文件：
-    // 启动时写下自己的 pid，退出时删掉。锁文件存在但 pid 已经不在，
-    // 就说明上一次是强制退出或崩溃，端口上的监听者可以安全收掉。
+    // 原则：只结束「能证明是自己启动的」进程，证明不了一律不碰，改用别的端口。
+    //
+    // 锁文件记录三样东西：本次 App 的 pid、本次拉起的服务进程 pid、服务所在的端口。
+    // 判定孤儿需要两条同时成立：
+    //   1. 锁里的 App pid 已经不存在（说明上次是崩溃或被 kill 掉，没走正常退出）
+    //   2. 锁里的服务 pid 还活着，**并且确实还在锁里记录的那个端口上监听**
+    // 只要有任何一条不满足，就认为「无法确认归属」，不发出任何信号。
+    //
+    // 旧实现按端口范围（8765-8800）无差别 kill，会误杀另一个还在运行的实例的服务，
+    // 甚至误杀别的程序 —— 已经去掉。
 
     private let LOCK = "/tmp/hearthstone-app.lock"
 
-    private func previousInstancePid() -> Int32? {
-        guard let text = try? String(contentsOfFile: LOCK, encoding: .utf8),
-              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
-              pid > 1 else { return nil }
-        return pid
+    private struct LockInfo: Codable {
+        var app: Int32
+        var server: Int32?
+        var port: Int?
     }
 
-    private func writeLock() {
-        try? "\(getpid())".write(toFile: LOCK, atomically: true, encoding: .utf8)
+    private func readLock() -> LockInfo? {
+        guard let data = FileManager.default.contents(atPath: LOCK) else { return nil }
+        if let info = try? JSONDecoder().decode(LockInfo.self, from: data), info.app > 1 {
+            return info
+        }
+        // 兼容旧格式：文件里只有一个 pid
+        if let text = String(data: data, encoding: .utf8),
+           let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 {
+            return LockInfo(app: pid, server: nil, port: nil)
+        }
+        return nil
+    }
+
+    private func writeLock(server: Int32?, port: Int?) {
+        let info = LockInfo(app: getpid(), server: server, port: port)
+        guard let data = try? JSONEncoder().encode(info) else { return }
+        try? data.write(to: URL(fileURLWithPath: LOCK), options: .atomic)
     }
 
     private func clearLock() {
-        if let pid = previousInstancePid(), pid == getpid() {
+        // 只有锁还属于自己才删：两个实例共用一个锁文件，别替别人清
+        if let info = readLock(), info.app == getpid() {
             try? FileManager.default.removeItem(atPath: LOCK)
         }
     }
 
-    private func reapStaleListeners() {
-        if let other = previousInstancePid(), kill(other, 0) == 0 {
-            plog("another instance is running (pid \(other)), leaving listeners alone")
-            return
+    /// 返回 true 表示「另一个实例正在运行」，调用方据此只做提示、不清理。
+    private func cleanupOwnedOrphans() -> Bool {
+        guard let old = readLock() else {
+            plog("reap: 没有锁文件，不清理任何进程")
+            return false
         }
-        let pids = pidsListening(inPortRange: "8765-8800")
-        guard !pids.isEmpty else { plog("reap: nothing listening in 8765-8800"); return }
-        for pid in pids {
-            plog("reap: cleaning listener pid=\(pid) left by a previous run")
-            kill(pid, SIGTERM)
-            usleep(300_000)
-            if kill(pid, 0) == 0 { kill(pid, SIGKILL) }
+        if old.app != getpid(), kill(old.app, 0) == 0 {
+            plog("reap: 另一个实例正在运行 (pid \(old.app), port \(old.port.map(String.init) ?? "-"))，不动任何监听者")
+            return true
         }
+        guard let sp = old.server, let spPort = old.port, sp > 1 else {
+            plog("reap: 锁文件是异常退出留下的，但没有记录服务进程，无需清理")
+            return false
+        }
+        guard kill(sp, 0) == 0 else {
+            plog("reap: 记录的服务进程 \(sp) 已不存在")
+            return false
+        }
+        guard listensOn(pid: sp, port: spPort) else {
+            plog("reap: pid \(sp) 还活着但不在端口 \(spPort) 上监听，疑似 pid 复用，不动它")
+            return false
+        }
+        plog("reap: 清理上次残留的服务进程 pid=\(sp)（端口 \(spPort)，已确认归属）")
+        kill(sp, SIGTERM)
+        usleep(300_000)
+        if kill(sp, 0) == 0 { kill(sp, SIGKILL) }
+        return false
     }
 
-    private func pidsListening(inPortRange range: String) -> [Int32] {
+    /// 归属校验：该 pid 是否真的在这个端口上 LISTEN。lsof 不可用时返回 false（保守）。
+    private func listensOn(pid: Int32, port: Int) -> Bool {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        task.arguments = ["-ti", "tcp:\(range)", "-sTCP:LISTEN"]
+        task.arguments = ["-ti", "tcp:\(port)", "-sTCP:LISTEN"]
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice
-        do { try task.run() } catch { return [] }
+        do { try task.run() } catch { return false }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         task.waitUntilExit()
         let out = String(data: data, encoding: .utf8) ?? ""
-        // 只接受有效的正整数：kill(0, ...) 会把信号发给整个进程组，必须挡住
-        return out.split(separator: "\n").compactMap { line -> Int32? in
-            guard let pid = Int32(line.trimmingCharacters(in: .whitespaces)), pid > 1 else { return nil }
-            return pid
+        return out.split(separator: "\n").contains {
+            Int32($0.trimmingCharacters(in: .whitespaces)) == pid
         }
     }
 

@@ -58,6 +58,15 @@ def main():
     check("卡牌 tile 的可点击性由 click 变量决定",
           "const click = full ? '' :" in js and "${click}" in js)
 
+    # 刷新页面接回对局 / App 外壳的端口占用提示 / 对局保留说明
+    check("页面加载时会查询 /api/state 接回对局",
+          "async function resumeGame" in js and "api('/api/state')" in js
+          and "resumeGame()" in js)
+    check("组卡视图说明了「对局只保留在本次运行内」",
+          "persistNote" in ids_defined and "退出 App 会丢" in src)
+    check("App 外壳传来的 ?warn= 会被显示成提示条",
+          "URLSearchParams(location.search)" in js and "get('warn')" in js)
+
     print(f"\n结果：{ok} 通过 / {fail} 失败")
     return 1 if fail else 0
 

@@ -8,10 +8,12 @@
 """
 import json
 import random
+import socket
 import threading
+import time
 import urllib.error
 import urllib.request
-from http.server import HTTPServer
+from http.server import ThreadingHTTPServer
 
 import serve  # 会在导入时加载卡池
 
@@ -29,7 +31,8 @@ def check(name, cond, detail=""):
 
 
 def start_server():
-    srv = HTTPServer(("127.0.0.1", 0), serve.H)
+    # 必须和 serve.main() 用同一种服务器：单线程版本会被一条挂着的连接卡死
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), serve.H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, srv.server_address[1]
 
@@ -287,6 +290,19 @@ def main():
               code == 200 and r.get("ok") and r.get("state"), f"{code} {r}")
         check("AI 走完后轮到玩家",
               r["state"]["cur"] == 0, r["state"].get("cur"))
+
+        print("=== 并发：一条空闲连接不该挡住别的请求 ===")
+        # 起因：WKWebView 会挂着一条 keep-alive 连接，单线程 HTTPServer 会因此
+        # 让所有其它客户端一直等到超时。换个多线程服务器 + 全局锁才是对的。
+        idle = socket.create_connection(("127.0.0.1", port), timeout=5)
+        try:
+            t0 = time.time()
+            code, r = api(port, "/api/state")
+            dt = time.time() - t0
+            check("有连接挂着不发请求时，API 仍能及时响应",
+                  code in (200, 400) and dt < 3, f"code={code} 耗时 {dt:.2f}s")
+        finally:
+            idle.close()
     finally:
         srv.shutdown()
 

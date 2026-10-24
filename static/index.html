@@ -83,7 +83,9 @@ button:disabled{opacity:.4;cursor:default}
 
 <!-- 组卡视图 -->
 <div id="viewDeck">
-  <div class="row filters">
+  <div id="persistNote" class="st-legend" style="padding:2px 2px 8px">
+    对局只保留在本次运行内：刷新窗口（⌘R）不会丢，退出 App 会丢。
+  </div>  <div class="row filters">
     <input id="q" placeholder="搜索卡名或卡面文字" oninput="drawPool()">
     <select id="fcost" onchange="drawPool()">
       <option value="">全部费用</option>
@@ -531,7 +533,10 @@ function failed(e){
 
 document.getElementById('cls').addEventListener('change', ()=>{ DECK=[]; loadPool(); });
 loadPool();
-resumeGame();
+// App 外壳会在端口被占/另开窗口时带 ?warn= 过来，这里用提示条显示；
+// 放在 resumeGame 之后，免得被 after() 里的 clearNotice() 抹掉
+const warnParam = new URLSearchParams(location.search).get('warn');
+resumeGame().finally(()=>{ if(warnParam) notice('提示：' + warnParam, 'info'); });
 
 // 刷新/重开页面不该丢掉正在打的那局：服务端仍持有局面，这里把它接回来
 async function resumeGame(){

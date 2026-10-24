@@ -2,8 +2,8 @@
 
 Run: python3 serve.py   then open http://localhost:8765
 """
-import json, os, random, sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import json, os, random, sys, threading
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 import engine
@@ -40,6 +40,9 @@ HERO_POWER_CN = {
 }
 
 STATE = {"game": None, "deck": None}
+# One global game state, so requests must not interleave. Threading is only there to
+# keep idle connections (the WebView keeps one open) from blocking other clients.
+STATE_LOCK = threading.Lock()
 DECK_SIZE = 30
 
 
@@ -181,6 +184,10 @@ class H(BaseHTTPRequestHandler):
 
     # ---------- GET ----------
     def do_GET(self):
+        with STATE_LOCK:
+            self._handle_get()
+
+    def _handle_get(self):
         u = urlparse(self.path)
         path = u.path
 
@@ -223,6 +230,10 @@ class H(BaseHTTPRequestHandler):
 
     # ---------- POST ----------
     def do_POST(self):
+        with STATE_LOCK:
+            self._handle_post()
+
+    def _handle_post(self):
         path = urlparse(self.path).path
         try:
             n = int(self.headers.get("Content-Length", 0))
@@ -355,7 +366,9 @@ class H(BaseHTTPRequestHandler):
 def main():
     print(f"卡池 {len(CARDS)} 张 | 启动 http://localhost:{PORT}")
     print("Ctrl-C 退出")
-    HTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    # Threading matters here: the WebView keeps a connection open, and a
+    # single-threaded server would stall any other client until it closes.
+    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
 
 
 if __name__ == "__main__":
