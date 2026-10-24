@@ -50,6 +50,20 @@ button:disabled{opacity:.4;cursor:default}
 .grid{display:flex;gap:10px;margin-top:10px}
 .col{flex:1;min-width:260px}
 .scroll{height:62vh;overflow:auto;border:1px solid #2a2a2e;border-radius:5px;padding:6px}
+/* —— 我的收藏式布局：上职业页签 / 中卡池+右侧卡组 / 下筛选 —— */
+.cm-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.cm-tabs{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.cm-tab{background:#242428;border:1px solid #3a3a40;border-radius:14px;padding:4px 12px;
+  cursor:pointer;font-size:13px;color:#bbb}
+.cm-tab:hover{border-color:#8ab;color:#ddd}
+.cm-tab.active{background:#3a2a12;border-color:#fa3;color:#fc6}
+.cm-tab.deckcls{border-color:#7a5c20}
+.cm-body{display:flex;gap:10px;margin-top:8px;align-items:flex-start}
+.cm-pool{flex:1;min-width:0}
+.cm-deck{width:300px;flex:none}
+.cm-bottom{margin-top:10px;padding-top:8px;border-top:1px solid #333}
+#pool{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;align-content:start}
+#mydeck .card{max-width:none}
 #chooseBox{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:20;
   background:#222226;border:1px solid #fa3;border-radius:8px;padding:10px 12px;
   box-shadow:0 6px 24px #000a;max-width:760px}
@@ -67,25 +81,36 @@ button:disabled{opacity:.4;cursor:default}
 
 <div id="bar">
   <div class="row">
-    <span>职业</span>
-    <select id="cls"></select>
-    <button onclick="randomDeck()">随机卡组</button>
-    <button onclick="clearDeck()">清空</button>
-    <span>卡组 <b id="cnt">0</b>/30 <span id="cntHint" class="st-legend"></span></span>
-    <button id="go" onclick="startGame()" disabled>开始对战</button>
+    <span id="hint" style="color:#fa3"></span>
     <button onclick="backToDeck()" class="hidden" id="back">返回组卡</button>
     <button onclick="startGame()" class="hidden" id="again">再来一局</button>
-    <span id="hint" style="color:#fa3"></span>
     <span id="seed" class="st-legend"></span>
   </div>
   <div id="notice" class="hidden"></div>
 </div>
 
-<!-- 组卡视图 -->
+<!-- 组卡视图：仿「我的收藏」——上职业页签，中间卡池，右侧卡组，底部筛选 -->
 <div id="viewDeck">
-  <div id="persistNote" class="st-legend" style="padding:2px 2px 8px">
-    对局只保留在本次运行内：刷新窗口（⌘R）不会丢，退出 App 会丢。
-  </div>  <div class="row filters">
+  <div class="cm-top">
+    <div class="cm-tabs" id="clsTabs"></div>
+    <div class="row" style="flex:none">
+      <span>卡组 <b id="cnt">0</b>/30 <span id="cntHint" class="st-legend"></span></span>
+      <button onclick="randomDeck()">随机卡组</button>
+      <button onclick="clearDeck()">清空</button>
+      <button id="go" onclick="startGame()" disabled>开始对战</button>
+    </div>
+  </div>
+  <div class="cm-body">
+    <div class="cm-pool">
+      <div class="zone-label" id="poolLabel">卡池（点击加入卡组）</div>
+      <div class="scroll" id="pool"></div>
+    </div>
+    <div class="cm-deck">
+      <div class="zone-label">我的卡组（点击移除）</div>
+      <div class="scroll" id="mydeck"></div>
+    </div>
+  </div>
+  <div class="cm-bottom row filters">
     <input id="q" placeholder="搜索卡名或卡面文字" oninput="drawPool()">
     <select id="fcost" onchange="drawPool()">
       <option value="">全部费用</option>
@@ -102,16 +127,9 @@ button:disabled{opacity:.4;cursor:default}
       <option value="LEGENDARY">传说</option>
     </select>
     <span id="poolCount" class="st-legend"></span>
-  </div>
-  <div class="grid">
-    <div class="col">
-      <div class="zone-label" id="poolLabel">卡池（点击加入卡组）</div>
-      <div class="scroll" id="pool"></div>
-    </div>
-    <div class="col">
-      <div class="zone-label">我的卡组（点击移除）</div>
-      <div class="scroll" id="mydeck"></div>
-    </div>
+    <span id="persistNote" class="st-legend">
+      对局只保留在本次运行内：刷新窗口（⌘R）不会丢，退出 App 会丢。
+    </span>
   </div>
 </div>
 
@@ -144,6 +162,8 @@ button:disabled{opacity:.4;cursor:default}
 
 <script>
 let ALL=[], DECK=[], S=null, SEL=null, CN={}, HP={};
+let DECKCLASS='MAGE';   // 卡组所属职业（换职业会清空卡组）
+let VIEWCLS='MAGE';     // 正在浏览的页签：职业 id 或 'NEUTRAL'（通用）
 
 async function api(path, body){
   const opt = body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {};
@@ -186,19 +206,47 @@ function clearNotice(){
 
 async function loadPool(){
   try{
-    const d = await api('/api/cards?cls='+document.getElementById('cls').value);
+    const d = await api('/api/cards?cls='+VIEWCLS);
     ALL = d.cards;
-    const sel = document.getElementById('cls');
     d.classes.forEach(c=>{CN[c.id]=c.name});
+    CN['NEUTRAL']='通用';
     HP = d.hero_powers || {};
-    if(sel.options.length===0){
-      d.classes.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;sel.appendChild(o)});
-      sel.value='MAGE';
-    }
+    buildTabs(d.classes);
     drawPool();
   }catch(e){
     notice('加载卡池失败：' + e.message);
   }
+}
+
+// —— 职业页签：点职业 = 选定卡组职业并浏览它的牌；点「通用」只过滤中立牌，卡组不动 ——
+function buildTabs(classes){
+  const box = document.getElementById('clsTabs');
+  box.innerHTML = '';
+  classes.forEach(c=>addTab(c.id, c.name));
+  addTab('NEUTRAL', '通用');
+  renderTabs();
+}
+function addTab(id, name){
+  const b = document.createElement('button');
+  b.className = 'cm-tab'; b.dataset.cls = id; b.textContent = name;
+  b.onclick = ()=>pickTab(id);
+  document.getElementById('clsTabs').appendChild(b);
+}
+function pickTab(id){
+  if(id === 'NEUTRAL'){            // 通用只是浏览过滤，不影响卡组归属
+    VIEWCLS = 'NEUTRAL'; renderTabs(); loadPool(); return;
+  }
+  if(id !== DECKCLASS){            // 换职业：卡组重开（沿用旧下拉的行为）
+    DECKCLASS = id; VIEWCLS = id; DECK = [];
+    document.getElementById('hint').textContent = '';
+  }
+  VIEWCLS = id; renderTabs(); loadPool();
+}
+function renderTabs(){
+  document.querySelectorAll('#clsTabs .cm-tab').forEach(b=>{
+    b.classList.toggle('active', b.dataset.cls === VIEWCLS);
+    b.classList.toggle('deckcls', b.dataset.cls === DECKCLASS && b.dataset.cls !== VIEWCLS);
+  });
 }
 
 const RAR_CN={LEGENDARY:'传说',EPIC:'史诗',RARE:'稀有',COMMON:'普通'};
@@ -257,8 +305,9 @@ function drawPool(){
   const part = ALL.filter(c=>c.ok && c.partial).length;
   const blank = ALL.filter(c=>!c.ok).length;
   document.getElementById('poolLabel').innerHTML =
-    `卡池 ${ALL.length} 张 — 完整效果 <b style="color:#8f8">${full}</b> · ` +
-    `部分效果 <b class="st-part">${part}</b> · 白板 <b class="st-none">${blank}</b>`;
+    `（${VIEWCLS==='NEUTRAL' ? '通用 · 中立牌' : (CN[VIEWCLS]||'')}）卡池 ${ALL.length} 张 — ` +
+    `完整效果 <b style="color:#8f8">${full}</b> · 部分效果 <b class="st-part">${part}</b> · ` +
+    `白板 <b class="st-none">${blank}</b>`;
   document.getElementById('poolCount').textContent =
     shown.length === ALL.length ? '' : `筛出 ${shown.length} 张`;
 
@@ -297,7 +346,7 @@ function remove(cid){ const i=DECK.lastIndexOf(cid); if(i>=0){DECK.splice(i,1);
 function clearDeck(){ DECK=[]; document.getElementById('hint').textContent=''; drawPool(); }
 async function randomDeck(){
   try{
-    const d = await api('/api/random_deck',{cls:document.getElementById('cls').value});
+    const d = await api('/api/random_deck',{cls:DECKCLASS});
     DECK=d.deck; drawPool(); clearNotice();
   }catch(e){ notice('生成随机卡组失败：' + e.message); }
 }
@@ -305,7 +354,7 @@ async function randomDeck(){
 async function startGame(){
   clearNotice();
   try{
-    const r = await api('/api/start',{deck:DECK, cls:document.getElementById('cls').value});
+    const r = await api('/api/start',{deck:DECK, cls:DECKCLASS});
     document.getElementById('viewDeck').classList.add('hidden');
     document.getElementById('viewGame').classList.remove('hidden');
     document.getElementById('back').classList.remove('hidden');
@@ -531,7 +580,6 @@ function failed(e){
   notice(e.message || '操作失败');
 }
 
-document.getElementById('cls').addEventListener('change', ()=>{ DECK=[]; loadPool(); });
 loadPool();
 // App 外壳会在端口被占/另开窗口时带 ?warn= 过来，这里用提示条显示；
 // 放在 resumeGame 之后，免得被 after() 里的 clearNotice() 抹掉
