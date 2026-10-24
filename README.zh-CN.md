@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-**v1.05** · 完全离线的单机炉石 · 纯 Python 标准库 + 单文件前端
+**v1.06** · 完全离线的单机炉石 · 纯 Python 标准库 + 单文件前端
 
 在自己电脑上跟 AI 打炉石——可以是 macOS 应用，也可以从命令行跑。
 没有美术、没有动画，只有**卡牌效果本身**：2014 原版（基础 + 经典）**382 张卡的效果全部实现**，
@@ -28,8 +28,8 @@
 ### macOS 应用（推荐）
 
 ```bash
-git clone https://github.com/Kliocp-gpu/web-hearthstone.git
-cd web-hearthstone
+git clone https://github.com/Kliocp-gpu/solo-hearthstone.git
+cd solo-hearthstone
 ./build_app.sh
 open build/单机炉石.app
 ```

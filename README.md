@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**v1.05** · single-player Hearthstone, fully offline · pure Python standard library + one HTML file
+**v1.06** · single-player Hearthstone, fully offline · pure Python standard library + one HTML file
 
 Play Hearthstone against an AI on your own machine — as a macOS app, or from the command line.
 No art, no animation — just the **card effects**. All **382 cards** of the original 2014 set
@@ -30,8 +30,8 @@ There are no images; a card face is text. All the effort went into
 ### macOS app (recommended)
 
 ```bash
-git clone https://github.com/Kliocp-gpu/web-hearthstone.git
-cd web-hearthstone
+git clone https://github.com/Kliocp-gpu/solo-hearthstone.git
+cd solo-hearthstone
 ./build_app.sh
 open build/单机炉石.app
 ```
