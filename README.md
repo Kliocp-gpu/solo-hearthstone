@@ -126,6 +126,7 @@ Implemented mechanics:
 | `test_cards.py` | Behavioral tests: 161 assertions that key cards really do what their text says |
 | `test_api.py` | HTTP-layer regression: 45 assertions on error codes, reasons, and state preservation |
 | `test_play_http.py` | Full games over HTTP: 3 complete matches, invariants checked every action |
+| `test_ui.py` | Static front-end checks: every id and handler referenced by the script exists |
 | `audit.py` | Card-text ↔ code audit: if the text says "deal damage", the code must contain the corresponding call |
 
 ### Why cards are generated
@@ -163,6 +164,7 @@ Rule tables (in `gen_cards.py`):
 python3 test_cards.py       # 161/161 (verifies behavior card by card, not just counting)
 python3 test_api.py         # 45/45 (HTTP layer: error codes, reasons, state untouched on failure)
 python3 test_play_http.py   # 17/17 (3 complete games driven through the HTTP API)
+python3 test_ui.py          # 11/11 (static front-end checks: ids, handlers, controls)
 python3 selftest.py 1000    # 1000 random games, 0 card-effect errors
 python3 audit.py            # card-text ↔ code audit, 0 empty shells
 ```

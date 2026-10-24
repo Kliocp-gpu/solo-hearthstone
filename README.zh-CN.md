@@ -114,6 +114,7 @@ python3 serve.py
 | `test_cards.py` | 行为级验证：161 条断言，逐张检查关键卡是否真的按卡面生效 |
 | `test_api.py` | 接口层回归：45 条断言，检查错误码、失败原因、失败时局面不变 |
 | `test_play_http.py` | 整局回归：通过 HTTP 打完整 3 局，每一步校验不变量 |
+| `test_ui.py` | 前端静态检查：脚本引用的 id 与事件处理函数都存在 |
 | `audit.py` | 卡面 ↔ 代码一致性审计：卡面说「造成伤害」，代码里就必须有相应调用 |
 
 ### 为什么卡是「生成」出来的
@@ -150,6 +151,7 @@ register('VAN_CS2_029', name='火球术', cost=4, type='SPELL',
 python3 test_cards.py       # 161/161 通过（逐张验证行为，不是数数量）
 python3 test_api.py         # 45/45 通过（接口层：错误码、失败原因、失败时局面不变）
 python3 test_play_http.py   # 17/17 通过（3 局完整对局走 HTTP 接口）
+python3 test_ui.py          # 11/11 通过（前端静态检查：id、处理函数、控件）
 python3 selftest.py 1000    # 1000 局随机对战，0 卡效果报错
 python3 audit.py            # 卡面↔代码审计，0 空壳
 ```

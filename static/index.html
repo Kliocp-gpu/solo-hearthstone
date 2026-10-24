@@ -39,6 +39,11 @@ button:disabled{opacity:.4;cursor:default}
 .tag-shield{background:#fc3;border-radius:3px;padding:0 3px;color:#000;font-size:10px}
 .tag-stealth{background:#79c;border-radius:3px;padding:0 3px;color:#000;font-size:10px}
 .card.dimmed{opacity:.45;cursor:not-allowed}
+.card.full{opacity:.45;cursor:not-allowed}
+.card .own{position:absolute;right:5px;top:4px;font-size:10px;color:#9cf;background:#1b1b1f;border:1px solid #3a3a40;border-radius:8px;padding:0 4px}
+.filters{margin:6px 0 2px}
+.filters input,.filters select{background:#1b1b1f;color:#ddd;border:1px solid #3a3a40;border-radius:4px;padding:4px 7px;font-size:13px}
+.filters input{min-width:200px}
 .st-none{color:#a66}
 .st-part{color:#d9a441}
 .st-legend{font-size:11px;color:#888;margin-top:6px}
@@ -66,9 +71,10 @@ button:disabled{opacity:.4;cursor:default}
     <select id="cls"></select>
     <button onclick="randomDeck()">随机卡组</button>
     <button onclick="clearDeck()">清空</button>
-    <span>卡组 <b id="cnt">0</b>/30</span>
+    <span>卡组 <b id="cnt">0</b>/30 <span id="cntHint" class="st-legend"></span></span>
     <button id="go" onclick="startGame()" disabled>开始对战</button>
     <button onclick="backToDeck()" class="hidden" id="back">返回组卡</button>
+    <button onclick="startGame()" class="hidden" id="again">再来一局</button>
     <span id="hint" style="color:#fa3"></span>
     <span id="seed" class="st-legend"></span>
   </div>
@@ -77,6 +83,24 @@ button:disabled{opacity:.4;cursor:default}
 
 <!-- 组卡视图 -->
 <div id="viewDeck">
+  <div class="row filters">
+    <input id="q" placeholder="搜索卡名或卡面文字" oninput="drawPool()">
+    <select id="fcost" onchange="drawPool()">
+      <option value="">全部费用</option>
+      <option value="0-1">0–1 费</option>
+      <option value="2-3">2–3 费</option>
+      <option value="4-5">4–5 费</option>
+      <option value="6+">6 费及以上</option>
+    </select>
+    <select id="frar" onchange="drawPool()">
+      <option value="">全部稀有度</option>
+      <option value="COMMON">普通</option>
+      <option value="RARE">稀有</option>
+      <option value="EPIC">史诗</option>
+      <option value="LEGENDARY">传说</option>
+    </select>
+    <span id="poolCount" class="st-legend"></span>
+  </div>
   <div class="grid">
     <div class="col">
       <div class="zone-label" id="poolLabel">卡池（点击加入卡组）</div>
@@ -186,46 +210,89 @@ function stTag(c){
   if(c.partial) return '<span class="st-part">部分</span>';
   return '';
 }
-function cardHtml(c, dim){
+const COST_RANGE={'':'','0-1':[0,1],'2-3':[2,3],'4-5':[4,5],'6+':[6,99]};
+function ownedMax(c){ return c.rarity==='LEGENDARY' ? 1 : 2; }
+function ownedCount(cid){ return DECK.filter(x=>x===cid).length; }
+
+// 当前筛选条件下的卡池（搜索 + 费用区间 + 稀有度）
+function filteredPool(){
+  const q = (document.getElementById('q').value||'').trim().toLowerCase();
+  const fr = document.getElementById('fcost').value;
+  const rr = document.getElementById('frar').value;
+  const range = COST_RANGE[fr];
+  return ALL.filter(c=>{
+    if(q){
+      const hay = (c.name||'') + ' ' + (c.text||'');
+      if(!hay.toLowerCase().includes(q)) return false;
+    }
+    if(range && (c.cost < range[0] || c.cost > range[1])) return false;
+    if(rr && c.rarity !== rr) return false;
+    return true;
+  });
+}
+
+function cardHtml(c){
   const cost = `<span class="c">${c.cost}</span>`;
   const st = (c.type==='MINION') ? `<b>${c.atk}/${c.hp}</b>` : (c.type==='WEAPON'?`${c.atk}/${c.hp}`:'法术');
   const cn = (c.cls && c.cls!=='NEUTRAL') ? `<span class="pill">${CN[c.cls]||c.cls}</span>` : '';
   const code = RAR_CODE[c.rarity]||'C';
-  return `<div class="card ${code} ${dim?'dim':''}" onclick="add('${c.cid}')">
+  const have = ownedCount(c.cid), max = ownedMax(c);
+  const full = have>=max || DECK.length>=30;
+  const badge = have ? `<span class="own">${have}/${max}</span>` : '';
+  const click = full ? '' : ` onclick="add('${c.cid}')"`;
+  return `<div class="card ${code} ${full?'full':''}"${click}>
+    ${badge}
     <div class="n">${cost} ${c.name}${rarTag(c)}</div>
     <div>${st} ${stTag(c)}${cn}</div>
     <div class="t">${(c.text||'').replace(/</g,'&lt;')}</div></div>`;
 }
 
 function drawPool(){
-  document.getElementById('pool').innerHTML = ALL.map(c=>cardHtml(c,false)).join('');
+  const shown = filteredPool();
+  document.getElementById('pool').innerHTML = shown.map(c=>cardHtml(c)).join('') ||
+    '<div class="st-legend">没有符合条件的卡牌</div>';
   const full = ALL.filter(c=>c.ok && !c.partial).length;
   const part = ALL.filter(c=>c.ok && c.partial).length;
   const blank = ALL.filter(c=>!c.ok).length;
   document.getElementById('poolLabel').innerHTML =
     `卡池 ${ALL.length} 张 — 完整效果 <b style="color:#8f8">${full}</b> · ` +
     `部分效果 <b class="st-part">${part}</b> · 白板 <b class="st-none">${blank}</b>`;
+  document.getElementById('poolCount').textContent =
+    shown.length === ALL.length ? '' : `筛出 ${shown.length} 张`;
+
   const cnt={}; DECK.forEach(c=>cnt[c]=(cnt[c]||0)+1);
   document.getElementById('mydeck').innerHTML = Object.keys(cnt).map(cid=>{
     const c = ALL.find(x=>x.cid===cid) || {cid,name:cid,cost:'?',text:'',type:''};
-    return `<div class="card" onclick="remove('${cid}')"><div class="n">${cnt[cid]}x ${c.name}</div><div class="c">${c.cost}</div></div>`;
-  }).join('');
+    return `<div class="card" onclick="remove('${cid}')">
+      <div class="n">${cnt[cid]}x ${c.name}</div><div class="c">${c.cost} 费</div></div>`;
+  }).join('') || '<div class="st-legend">还没有卡牌，点左边卡池加入</div>';
+
+  const left = 30 - DECK.length;
   document.getElementById('cnt').textContent = DECK.length;
+  document.getElementById('cntHint').textContent =
+    left > 0 ? `（还差 ${left} 张）` : '（已满，可以开战）';
   document.getElementById('go').disabled = DECK.length!==30;
 }
 
 function add(cid){
   const card = ALL.find(x=>x.cid===cid);
-  const max = (card && card.rarity==='LEGENDARY') ? 1 : 2;   // 传说限 1 张
-  const same = DECK.filter(c=>c===cid).length;
-  if(DECK.length>=30 || same>=max){
-    document.getElementById('hint').textContent = same>=max ? `这${RAR_CN[card?.rarity]||'张'}卡最多带 ${max} 张` : '';
+  const max = card ? ownedMax(card) : 2;
+  const same = ownedCount(cid);
+  const hint = document.getElementById('hint');
+  if(same>=max){
+    hint.textContent = `「${card?.name||cid}」最多带 ${max} 张`;
     return;
   }
+  if(DECK.length>=30){
+    hint.textContent = '卡组已满 30 张，先移除一张再添加';
+    return;
+  }
+  hint.textContent = '';
   DECK.push(cid); drawPool();
 }
-function remove(cid){ const i=DECK.lastIndexOf(cid); if(i>=0){DECK.splice(i,1); drawPool();} }
-function clearDeck(){ DECK=[]; drawPool(); }
+function remove(cid){ const i=DECK.lastIndexOf(cid); if(i>=0){DECK.splice(i,1);
+  document.getElementById('hint').textContent=''; drawPool();} }
+function clearDeck(){ DECK=[]; document.getElementById('hint').textContent=''; drawPool(); }
 async function randomDeck(){
   try{
     const d = await api('/api/random_deck',{cls:document.getElementById('cls').value});
@@ -242,6 +309,7 @@ async function startGame(){
     document.getElementById('back').classList.remove('hidden');
     document.getElementById('go').disabled=true;
     document.getElementById('seed').textContent = r.seed ? `本局种子 ${r.seed}` : '';
+    document.getElementById('again').classList.add('hidden');
     SEL=null; render(r.state, r.hp_used);
   }catch(e){
     notice('开局失败：' + e.message);
@@ -249,6 +317,7 @@ async function startGame(){
 }
 function backToDeck(){
   clearNotice();
+  document.getElementById('again').classList.add('hidden');
   document.getElementById('viewGame').classList.add('hidden');
   document.getElementById('viewDeck').classList.remove('hidden');
   document.getElementById('back').classList.add('hidden');
@@ -360,7 +429,18 @@ async function pickChoice(i, k){
 
 async function pick(side, i){
   if(!SEL){
-    if(side==='me' && i>=0){ SEL={kind:'board', i}; render(S,document.getElementById('hpBtn').disabled); document.getElementById('hint').textContent='点击敌方随从或英雄攻击'; }
+    if(side==='me' && i>=0){
+      const m = S.me.board[i];
+      if(!m.attackable){                       // 说清楚为什么点不动
+        document.getElementById('hint').textContent = m.frozen
+          ? `${m.name} 被冻结，本回合不能攻击`
+          : `${m.name} 本回合不能攻击（刚上场或已经攻击过）`;
+        return;
+      }
+      SEL={kind:'board', i};
+      render(S,document.getElementById('hpBtn').disabled);
+      document.getElementById('hint').textContent='点击敌方随从或英雄攻击';
+    }
     return;
   }
   const t = {side, i};
@@ -424,9 +504,12 @@ function after(r){
   document.getElementById('chooseBox').classList.add('hidden');
   if(r.state) render(r.state, r.hp_used);
   if(r.state && r.state.over){
+    document.getElementById('again').classList.remove('hidden');   // 结算后直接重开
     notice(r.state.winner==='你'
-      ? '对局结束：你赢了。点「返回组卡」可以再来一局。'
-      : '对局结束：你输了。点「返回组卡」可以再来一局。', 'info');
+      ? '对局结束：你赢了。点「再来一局」用同一套卡组重开，或点「返回组卡」改卡组。'
+      : '对局结束：你输了。点「再来一局」用同一套卡组重开，或点「返回组卡」改卡组。', 'info');
+  } else {
+    document.getElementById('again').classList.add('hidden');
   }
 }
 
