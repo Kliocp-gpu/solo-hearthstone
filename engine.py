@@ -2172,6 +2172,10 @@ class Game:
             return self.fail("本回合已经用过英雄技能了")
         if p.mana < 2:
             return self.fail(f"法力水晶不够（英雄技能需要 2，只有 {p.mana}）")
+        # 召唤型技能在场上已满时不能用（正式规则：不能用「召唤」类技能）
+        summons = p.cls in ("PALADIN", "SHAMAN", "DEATHKNIGHT") or p.hero_power_key == "JARAXXUS"
+        if summons and len(p.board) >= MAX_BOARD:
+            return self.fail(f"场上随从已满（{MAX_BOARD} 个），无法使用召唤类英雄技能")
         # 敌方潜行随从不能被技能指定（技能在规则上等同法术）
         if is_minion(target) and target.stealth and target.owner_id != p.pid:
             self.say(f"  {target.name} 无法被指定")
@@ -2188,12 +2192,45 @@ class Game:
             damage(c, c.target, n)
         elif p.cls == "WARRIOR":
             gain_armor(c, 2)                       # 护甲值：+2 护甲
+        elif p.cls == "WARLOCK":
+            # 生命分流：抽一张牌，然后对自己的英雄造成 2 点伤害。
+            # 自伤用非 spell 上下文，避免被法强/维伦放大（英雄技能对自己的伤害不吃加成）；
+            # 护甲仍按普通伤害流程吸收。
+            self.say("  生命分流：抽一张牌")
+            draw(c, 1)
+            damage(Ctx(self, p, self.foe_of(p), target=p), p, 2)
         elif p.cls == "DRUID":
             p.hero_atk += 1                        # 变形：本回合 +1 攻击力
             gain_armor(c, 1)                       #       并 +1 护甲
         elif p.cls == "PRIEST":
             heal(c, target if is_minion(target) else p, 2)
-        else:
+        elif p.cls == "PALADIN":                   # 援军：召唤一个 1/1 白银之手新兵
+            summon_token(c, 1, 1, 1, "白银之手新兵")
+            self.say("  援军：召唤一个 1/1 白银之手新兵")
+        elif p.cls == "ROGUE":                     # 匕首精通：装备一把 1/2 匕首（替换旧武器）
+            equip_weapon(c, 1, 2, "匕首")
+            self.say("  匕首精通：装备 1/2 匕首")
+        elif p.cls == "HUNTER":                    # 稳固射击：对敌方英雄 2 点伤害（不打随从）
+            foe = self.foe_of(p)
+            damage(Ctx(self, p, foe, target=foe), foe, 2)
+            self.say("  稳固射击：对敌方英雄造成 2 点伤害")
+        elif p.cls == "SHAMAN":                    # 图腾召唤：随机一个当前不在场的图腾
+            totems = [("治疗图腾", 0, 2, {}),
+                      ("灼热图腾", 1, 1, {}),
+                      ("石爪图腾", 0, 2, {"taunt": True}),
+                      ("风语图腾", 0, 2, {})]
+            have = {m.name for m in p.board}
+            left = [t for t in totems if t[0] not in have] or totems
+            name, atk, hp, kw = self.rng.choice(left)
+            summon_token(c, atk, hp, 1, name, **kw)
+            self.say(f"  图腾召唤：{name}")
+        elif p.cls == "DEMONHUNTER":               # 恶魔之咬：本回合 +1 攻击力
+            p.hero_atk += 1
+            self.say("  恶魔之咬：本回合 +1 攻击力")
+        elif p.cls == "DEATHKNIGHT":               # 亡灵大军：召唤一个 1/1 食尸鬼
+            summon_token(c, 1, 1, 1, "食尸鬼")
+            self.say("  亡灵大军：召唤一个 1/1 食尸鬼")
+        else:                                      # 法师：火焰冲击（1 点伤害，吃法强）
             damage(c, target if target is not None else self.foe_of(p), 1)
         self.say(f"{p.name} 使用英雄技能")
         self.check_deaths()

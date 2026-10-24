@@ -531,6 +531,24 @@ function failed(e){
 
 document.getElementById('cls').addEventListener('change', ()=>{ DECK=[]; loadPool(); });
 loadPool();
+resumeGame();
+
+// 刷新/重开页面不该丢掉正在打的那局：服务端仍持有局面，这里把它接回来
+async function resumeGame(){
+  let d;
+  try{
+    d = await api('/api/state');
+  }catch(e){
+    if(e.code !== 'no_game') notice('接回上一局失败：' + e.message);
+    return;                                  // no_game 是常态：还没开局
+  }
+  if(!d || !d.state) return;
+  document.getElementById('viewDeck').classList.add('hidden');
+  document.getElementById('viewGame').classList.remove('hidden');
+  document.getElementById('back').classList.remove('hidden');
+  document.getElementById('go').disabled = true;
+  after(d);
+}
 </script>
 </body>
 </html>

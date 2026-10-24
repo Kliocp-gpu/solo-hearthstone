@@ -129,8 +129,15 @@ def ai_turn(g):
         foe = g.opp
         use = False
         tgt = None
-        if p.cls in ("WARRIOR", "DRUID"):
-            use = True                                     # 加甲/变脸总是赚
+        if p.cls in ("WARRIOR", "DRUID", "HUNTER", "DEMONHUNTER"):
+            use = True                                     # 加甲/变脸/打脸/加攻 都是白赚
+        elif p.cls in ("PALADIN", "SHAMAN", "DEATHKNIGHT"):
+            use = len(p.board) < 7                          # 召唤型：场上有位置才用
+        elif p.cls == "ROGUE":
+            use = not p.weapon                              # 已有武器就不重复装（会顶掉耐久）
+        elif p.cls == "WARLOCK":
+            # 生命分流：抽一张牌、自己掉 2 血。不是伤害技能，别拿它补刀
+            use = len(p.hand) <= 4 and p.deck and p.hp - 2 > 8
         elif p.cls == "PRIEST":
             use = p.hp < 30 or any(m.hp < m.max_hp for m in p.board)
             if any(m.hp < m.max_hp for m in p.board):

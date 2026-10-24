@@ -548,6 +548,124 @@ f.hp = 30
 g.hero_power(p, f)
 check("法强让英雄技能的 1 伤变 2", f.hp == 28, f"hp={f.hp}")
 
+print("=== 英雄技能：术士 生命分流 ===")
+g = newgame()
+p, f = g.players
+p.cls = "WARLOCK"
+p.hp = 20
+deck0 = len(p.deck)
+res = g.hero_power(p)
+check("生命分流：消耗 2 费", res and p.mana == 8, f"mana={p.mana}")
+check("生命分流：抽一张牌", len(p.hand) == 1 and len(p.deck) == deck0 - 1,
+      f"hand={len(p.hand)} deck={len(p.deck)}")
+check("生命分流：对自己造成 2 点伤害", p.hp == 18, f"hp={p.hp}")
+check("生命分流：一回合只能用一次", not g.hero_power(p) and p.hp == 18, f"hp={p.hp}")
+
+# 法强 / 维伦只加成对外伤害，自伤固定 2
+g = newgame()
+p, f = g.players
+p.cls = "WARLOCK"
+p.hp = 20
+put(g, p, by_name("狗头人地卜师"))          # 法术伤害 +1
+g.hero_power(p)
+check("生命分流：法强不放大自伤", p.hp == 18, f"hp={p.hp}（法强 {p.spell_power}）")
+
+# 护甲照常吸收自伤
+g = newgame()
+p, f = g.players
+p.cls = "WARLOCK"
+p.hp = 20
+p.armor = 5
+g.hero_power(p)
+check("生命分流：护甲先吸收自伤", p.armor == 3 and p.hp == 20,
+      f"armor={p.armor} hp={p.hp}")
+
+# 牌库空时先吃疲劳，再挨 2 点
+g = newgame()
+p, f = g.players
+p.cls = "WARLOCK"
+p.hp = 20
+p.deck = []
+p.fatigue = 0
+g.hero_power(p)
+check("生命分流：空牌库先吃疲劳 1 再受 2 伤", p.hp == 17, f"hp={p.hp}")
+
+# 2 血时用技能会把自己打死（与正式规则一致）
+g = newgame()
+p, f = g.players
+p.cls = "WARLOCK"
+p.hp = 2
+g.hero_power(p)
+check("生命分流：2 血使用会自杀、判定对手胜",
+      p.hp <= 0 and g.over and g.winner == "B", f"hp={p.hp} over={g.over} winner={g.winner}")
+
+print("=== 英雄技能：其余六职业 ===")
+g = newgame()
+p, f = g.players
+p.cls = "PALADIN"
+g.hero_power(p)
+check("援军：召唤一个 1/1 白银之手新兵",
+      [(m.name, m.atk, m.hp) for m in p.board] == [("白银之手新兵", 1, 1)],
+      [(m.name, m.atk, m.hp) for m in p.board])
+
+g = newgame()
+p, f = g.players
+p.cls = "ROGUE"
+g.hero_power(p)
+w1 = dict(p.weapon) if p.weapon else None
+p.weapon["durability"] = 1                      # 先磨损
+p.hero_power_used = False
+g.hero_power(p)
+check("匕首精通：装备 1/2 匕首，重复使用顶掉旧的并回满耐久",
+      w1 == {"name": "匕首", "atk": 1, "durability": 2}
+      and p.weapon == {"name": "匕首", "atk": 1, "durability": 2},
+      f"首次={w1} 现在={p.weapon}")
+
+g = newgame()
+p, f = g.players
+p.cls = "HUNTER"
+f.hp = 30
+mm = put(g, f, by_name("银背族长"))
+hp0 = mm.hp
+g.hero_power(p, target=mm)                      # 就算指了随从，也只打脸
+check("稳固射击：对敌方英雄 2 点，随从不受影响",
+      f.hp == 28 and mm.hp == hp0, f"foe_hp={f.hp} 随从={mm.hp}/{hp0}")
+
+g = newgame()
+p, f = g.players
+p.cls = "SHAMAN"
+for _ in range(4):
+    p.hero_power_used = False
+    g.hero_power(p)
+names = [m.name for m in p.board]
+check("图腾召唤：四个图腾互不重复",
+      len(names) == 4 and len(set(names)) == 4, names)
+
+g = newgame()
+p, f = g.players
+p.cls = "DEMONHUNTER"
+g.hero_power(p)
+check("恶魔之咬：本回合 +1 攻击力", p.hero_atk == 1, f"hero_atk={p.hero_atk}")
+
+g = newgame()
+p, f = g.players
+p.cls = "DEATHKNIGHT"
+g.hero_power(p)
+check("亡灵大军：召唤一个 1/1 食尸鬼",
+      [(m.name, m.atk, m.hp) for m in p.board] == [("食尸鬼", 1, 1)],
+      [(m.name, m.atk, m.hp) for m in p.board])
+
+g = newgame()
+p, f = g.players
+p.cls = "PALADIN"
+p.mana = p.max_mana = 10
+for _ in range(7):
+    put(g, p, by_name("闪金镇步兵"))
+res = g.hero_power(p)
+check("场上满 7 个：召唤类技能被拒，且不扣法力",
+      (not res) and p.mana == 10 and len(p.board) == 7,
+      f"res={res} mana={p.mana} board={len(p.board)}")
+
 print("=== 费用修正 / 武器战吼 ===")
 g = newgame()
 p = g.players[0]
