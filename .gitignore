@@ -11,3 +11,6 @@ __pycache__/
 
 # Build output (regenerate with ./build_app.sh)
 build/
+
+# 逐卡对照导出的全表（生成物）
+cards-audit.tsv

@@ -2215,15 +2215,15 @@ class Game:
             damage(Ctx(self, p, foe, target=foe), foe, 2)
             self.say("  稳固射击：对敌方英雄造成 2 点伤害")
         elif p.cls == "SHAMAN":                    # 图腾召唤：随机一个当前不在场的图腾
-            totems = [("治疗图腾", 0, 2, {}),
-                      ("灼热图腾", 1, 1, {}),
-                      ("石爪图腾", 0, 2, {"taunt": True}),
-                      ("风语图腾", 0, 2, {})]
+            totems = [("TOKEN_TOTEM_HEAL", "治疗图腾"),
+                      ("TOKEN_TOTEM_SEARING", "灼热图腾"),
+                      ("TOKEN_TOTEM_STONECLAW", "石爪图腾"),
+                      ("TOKEN_TOTEM_WRATH", "风语图腾")]
             have = {m.name for m in p.board}
-            left = [t for t in totems if t[0] not in have] or totems
-            name, atk, hp, kw = self.rng.choice(left)
-            summon_token(c, atk, hp, 1, name, **kw)
-            self.say(f"  图腾召唤：{name}")
+            left = [t for t in totems if t[1] not in have] or totems
+            cid, tname = self.rng.choice(left)
+            summon(c, cid)                         # 走卡表，图腾自带的触发/法强才会生效
+            self.say(f"  图腾召唤：{tname}")
         elif p.cls == "DEMONHUNTER":               # 恶魔之咬：本回合 +1 攻击力
             p.hero_atk += 1
             self.say("  恶魔之咬：本回合 +1 攻击力")
@@ -2365,3 +2365,26 @@ class Game:
             foe=pp(self.players[1 - viewer], True),
             log=self.log[-30:],
         )
+
+
+# ============ 英雄技能召唤的图腾 ============
+# 这四张是萨满英雄技能「图腾召唤」的产物，不属于任何可收集卡池（VANILLA 里没有它们的本体），
+# 所以直接由引擎注册，不写进 cards.py —— 那个文件是 gen_cards.py 的生成产物，会被覆盖。
+register("TOKEN_TOTEM_HEAL", name="治疗图腾", cost=0, type="MINION", token=True,
+         rarity="FREE", en="Healing Totem", cls="SHAMAN", races=["TOTEM"], atk=0, hp=2,
+         text="在你的回合结束时，为所有友方角色恢复1点生命值。",
+         trigger=[("turn_end", lambda c: (aoe(c, lambda x: heal(c, x, 1), side="own"),
+                                          heal(c, c.me, 1)))])
+
+register("TOKEN_TOTEM_SEARING", name="灼热图腾", cost=0, type="MINION", token=True,
+         rarity="FREE", en="Searing Totem", cls="SHAMAN", races=["TOTEM"], atk=1, hp=1,
+         text="在你的回合结束时，对一个随机敌人造成1点伤害。",
+         trigger=[("turn_end", lambda c: damage_random_enemy(c, 1))])
+
+register("TOKEN_TOTEM_STONECLAW", name="石爪图腾", cost=0, type="MINION", token=True,
+         rarity="FREE", en="Stoneclaw Totem", cls="SHAMAN", races=["TOTEM"], atk=0, hp=2,
+         taunt=True, text="嘲讽")
+
+register("TOKEN_TOTEM_WRATH", name="风语图腾", cost=0, type="MINION", token=True,
+         rarity="FREE", en="Wrath of Air Totem", cls="SHAMAN", races=["TOTEM"], atk=0, hp=2,
+         spell_power=1, text="法术伤害+1")

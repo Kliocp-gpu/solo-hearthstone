@@ -666,6 +666,58 @@ check("场上满 7 个：召唤类技能被拒，且不扣法力",
       (not res) and p.mana == 10 and len(p.board) == 7,
       f"res={res} mana={p.mana} board={len(p.board)}")
 
+print("=== 图腾：四种都要有真实效果 ===")
+g = newgame()
+p, f = g.players
+big = put(g, p, by_name("冰风雪人"))
+big.hp = 3
+p.hp = 20
+heal_t = engine.summon(engine.Ctx(g, p, f), "TOKEN_TOTEM_HEAL")
+check("治疗图腾：0/2", bool(heal_t) and (heal_t.atk, heal_t.hp) == (0, 2),
+      f"{heal_t.atk if heal_t else '?'}/{heal_t.hp if heal_t else '?'}")
+g.end_turn()
+check("治疗图腾：回合结束为友方随从与英雄各回 1 点",
+      big.hp == 4 and p.hp == 21, f"随从={big.hp} 英雄={p.hp}")
+
+g = newgame()
+p, f = g.players
+f.hp = 30
+engine.summon(engine.Ctx(g, p, f), "TOKEN_TOTEM_SEARING")
+g.end_turn()
+check("灼热图腾：回合结束对一个随机敌人造成 1 点", f.hp == 29, f"hp={f.hp}")
+
+g = newgame()
+p, f = g.players
+stone = engine.summon(engine.Ctx(g, p, f), "TOKEN_TOTEM_STONECLAW")
+check("石爪图腾：0/2 嘲讽",
+      bool(stone) and stone.taunt and (stone.atk, stone.hp) == (0, 2),
+      f"{stone.atk if stone else '?'}/{stone.hp if stone else '?'} 嘲讽={stone.taunt if stone else '?'}")
+
+g = newgame()
+p, f = g.players
+engine.summon(engine.Ctx(g, p, f), "TOKEN_TOTEM_WRATH")
+check("风语图腾：法术伤害 +1", p.spell_power == 1, f"spell_power={p.spell_power}")
+p.hand = [by_name("寒冰箭")]
+f.hp = 30
+g.play_card(p, 0, target=f)
+check("风语图腾：寒冰箭由 3 伤变 4 伤", f.hp == 26, f"hp={f.hp}")
+
+g = newgame()
+p, f = g.players
+p.cls = "SHAMAN"
+for _ in range(4):
+    p.hero_power_used = False
+    g.hero_power(p)
+board = {m.name: m for m in p.board}
+check("萨满技能召唤的四个图腾都带卡表数据（不是数值白板）",
+      set(board) == {"治疗图腾", "灼热图腾", "石爪图腾", "风语图腾"}
+      and all(m.cid in engine.CARDS and engine.CARDS[m.cid].get("token") for m in p.board),
+      f"{[(m.name, m.cid) for m in p.board]}")
+check("其中石爪有嘲讽、风语加法强",
+      board["石爪图腾"].taunt and board["风语图腾"].spell_power == 1
+      and p.spell_power == 1,
+      f"嘲讽={board['石爪图腾'].taunt} 法强={p.spell_power}")
+
 print("=== 费用修正 / 武器战吼 ===")
 g = newgame()
 p = g.players[0]
