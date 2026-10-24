@@ -1,5 +1,6 @@
-"""极简本地服务器：Python 标准库，零第三方依赖
-启动：python3 serve.py  然后浏览器打开 http://localhost:8765
+"""Minimal local server: Python standard library only, zero dependencies.
+
+Run: python3 serve.py   then open http://localhost:8765
 """
 import json, os, random, sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -22,7 +23,8 @@ CLASS_CN = {
     "NEUTRAL": "中立",
 }
 
-# 英雄技能按职业简化后的实际效果（写实际行为，不套官方名以免误导）
+# Actual behaviour of each hero power in this simplified engine.
+# The text describes what the code really does, not the official card name.
 HERO_POWER_CN = {
     "MAGE": "火焰冲击：造成1点伤害",
     "PRIEST": "次级治疗术：恢复2点生命",
@@ -38,11 +40,58 @@ HERO_POWER_CN = {
 }
 
 STATE = {"game": None, "deck": None}
+DECK_SIZE = 30
 
 
 def playable():
     return [cid for cid, d in CARDS.items()
             if d.get("type") in ("MINION", "SPELL", "WEAPON") and not d.get("token")]
+
+
+def collectible_classes():
+    """Classes that actually have cards in this pool.
+
+    Only 9 of the 11 class ids have class cards here; Death Knight and Demon
+    Hunter have none, so offering them would give a deck of neutrals plus a
+    bogus hero power.
+    """
+    out = []
+    for c in CLASSES:
+        n = sum(1 for cid, d in CARDS.items()
+                if d.get("cls") == c and not d.get("token"))
+        if n >= 20:
+            out.append(c)
+    return out
+
+
+def deck_error(deck, cls):
+    """Validate a deck on the server; returns (code, message), or (None, None).
+
+    Front-end limits are UX only. Legality is decided here: exact size, card
+    ids exist, no tokens, class ownership, 1 copy per legendary, 2 otherwise.
+    """
+    if not isinstance(deck, list):
+        return "bad_request", "deck 必须是卡牌 id 的数组"
+    if len(deck) != DECK_SIZE:
+        return "invalid_deck", f"卡组必须正好 {DECK_SIZE} 张，现在是 {len(deck)} 张"
+    cnt = {}
+    for cid in deck:
+        if not isinstance(cid, str) or cid not in CARDS:
+            return "invalid_deck", f"卡组里有不存在的卡牌：{cid!r}"
+        d = CARDS[cid]
+        name = d.get("name", cid)
+        if d.get("token"):
+            return "invalid_deck", f"「{name}」是衍生牌，不能放进卡组"
+        if d.get("type") not in ("MINION", "SPELL", "WEAPON"):
+            return "invalid_deck", f"「{name}」不是可收集卡牌"
+        if d.get("cls") not in (cls, "NEUTRAL"):
+            own = CLASS_CN.get(d.get("cls"), d.get("cls"))
+            return "invalid_deck", f"「{name}」是{own}职业牌，不能放进{CLASS_CN.get(cls, cls)}卡组"
+        cnt[cid] = cnt.get(cid, 0) + 1
+        limit = 1 if d.get("rarity") == "LEGENDARY" else 2
+        if cnt[cid] > limit:
+            return "invalid_deck", f"「{name}」最多带 {limit} 张"
+    return None, None
 
 
 def random_deck(rng, cls=None, n=30):
@@ -52,7 +101,7 @@ def random_deck(rng, cls=None, n=30):
         if len(sub) >= 20:
             pool = sub
     deck, cnt = [], {}
-    for _ in range(600):                      # 传说限 1 张、其余限 2 张
+    for _ in range(600):                      # 1 copy per legendary, 2 otherwise
         if len(deck) >= n:
             break
         cid = rng.choice(pool)
@@ -61,13 +110,23 @@ def random_deck(rng, cls=None, n=30):
             continue
         cnt[cid] = cnt.get(cid, 0) + 1
         deck.append(cid)
-    while len(deck) < n:                      # 卡池太窄时兜底
-        deck.append(rng.choice(pool))
+    while len(deck) < n:                      # fallback for a narrow pool; limits still apply
+        added = False
+        for cid in pool:
+            lim = 1 if CARDS.get(cid, {}).get("rarity") == "LEGENDARY" else 2
+            while cnt.get(cid, 0) < lim and len(deck) < n:
+                cnt[cid] = cnt.get(cid, 0) + 1
+                deck.append(cid)
+                added = True
+            if len(deck) >= n:
+                break
+        if not added:                         # unreachable: the pool holds far more than 30
+            break
     return deck
 
 
 def resolve_target(g, t):
-    """把前端传来的 {side, i} 解析成实体；i=-1 表示英雄"""
+    """Resolve the front-end {side, i} reference into an entity; i=-1 means the hero."""
     if not t:
         return None
     p = g.players[0] if t.get("side") == "me" else g.players[1]
@@ -94,21 +153,21 @@ class H(BaseHTTPRequestHandler):
     def _json(self, obj, code=200):
         self._send(code, json.dumps(obj, ensure_ascii=False))
 
-    # ---------- 统一响应 ----------
+    # ---------- Uniform responses ----------
     def _ok(self, g, **kw):
-        """成功：始终带上 state，前端一律据此重绘"""
+        """Success: always carry state back so the client can redraw."""
         return self._json(dict(ok=True,
                                state=g.state(0) if g else None,
                                hp_used=g.players[0].hero_power_used if g else False,
                                **kw))
 
     def _err(self, code, message, g=None, status=400):
-        """失败：带错误码 + 人话原因，并尽量附上当前局面，让前端保持原样
+        """Failure: error code + human-readable reason, plus the current state.
 
-        错误码分三类，前端据此区分处理：
-          * no_game / not_your_turn / game_over —— 局面状态不对
-          * bad_* / illegal_* —— 这次操作不合法（可恢复，保留选择状态）
-          * server_error —— 服务端异常（前端提示重开或刷新）
+        Codes fall into three groups so the client can react differently:
+          * no_game / not_your_turn / game_over - the session is not playable
+          * bad_* / illegal_* - this action is invalid (recoverable, keep selection)
+          * server_error / ai_error - the server broke (offer restart / refresh)
         """
         body = dict(ok=False, error=dict(code=code, message=message))
         if g is not None:
@@ -117,7 +176,7 @@ class H(BaseHTTPRequestHandler):
         return self._json(body, status)
 
     def _act_failed(self, g, code, default_msg):
-        """动作返回 False 时，用引擎记录的原因回话"""
+        """Talk back with the reason the engine recorded when an action returned False."""
         return self._err(code, g.last_error or default_msg, g)
 
     # ---------- GET ----------
@@ -149,7 +208,7 @@ class H(BaseHTTPRequestHandler):
                                 ok=d.get("implemented", True),
                                 partial=d.get("partial", False)))
             out.sort(key=lambda x: (x["cost"], x["name"] or ""))
-            classes = [dict(id=c, name=CLASS_CN.get(c, c)) for c in CLASSES]
+            classes = [dict(id=c, name=CLASS_CN.get(c, c)) for c in collectible_classes()]
             return self._json(dict(cards=out, classes=classes, hero_powers=HERO_POWER_CN))
 
         if path == "/api/state":
@@ -187,30 +246,37 @@ class H(BaseHTTPRequestHandler):
         if path == "/api/start":
             deck = body.get("deck")
             cls = body.get("cls") or "MAGE"
-            if cls not in CLASSES:
-                return self._err("bad_request", f"未知职业：{cls}")
-            if deck is not None and not isinstance(deck, list):
-                return self._err("bad_request", "deck 必须是卡牌 id 的数组")
+            if cls not in collectible_classes():
+                return self._err("bad_request",
+                                 f"未知或没有卡牌的职业：{cls}")
+            if deck is not None:
+                code, why = deck_error(deck, cls)
+                if code:
+                    return self._err(code, why)
+            # The seed drives shuffling, the AI deck and the AI class.
+            # Returning it lets the same game be reproduced exactly.
             seed = body.get("seed")
+            if seed is None:
+                seed = random.randrange(1 << 30)
             rng = random.Random(seed)
-            if not deck or len(deck) < 30:
+            if not deck:
                 deck = random_deck(rng, cls)
-            ai_deck = random_deck(rng, rng.choice(CLASSES))
-            ai_cls = rng.choice(CLASSES)
+            ai_cls = rng.choice(collectible_classes())      # 先定职业，再按职业发牌
+            ai_deck = random_deck(rng, ai_cls)
             g = engine.Game(("你", f"AI（{CLASS_CN.get(ai_cls, ai_cls)}）"),
-                            (deck, ai_deck), seed=rng.randrange(1 << 30))
+                            (deck, ai_deck), seed=seed)
             g.players[0].cls = cls
             g.players[1].cls = ai_cls
             g.start_turn()
             STATE["game"], STATE["deck"] = g, deck
-            return self._ok(g, msg="开局", seed=seed)
+            return self._ok(g, msg="开局", seed=seed, ai_cls=ai_cls)
 
         if path == "/api/random_deck":
             rng = random.Random()
             cls = body.get("cls")
             return self._json(dict(deck=random_deck(rng, cls)))
 
-        # 下面这些都需要一个进行中的对局
+        # Everything below needs a game in progress
         if path not in ("/api/play", "/api/heropower", "/api/heroattack",
                         "/api/attack", "/api/end"):
             return self._err("not_found", f"没有这个接口：{path}", g, status=404)
@@ -272,7 +338,8 @@ class H(BaseHTTPRequestHandler):
                 try:
                     ai.ai_turn(g)        # AI 走完（内部会切回玩家）
                 except Exception as ex:
-                    # AI 崩了不能让局面卡在对手回合里：把回合交回玩家，并明确报告
+                    # Never leave the game stuck in the AI's turn:
+                    # hand the turn back and report the failure.
                     import traceback
                     traceback.print_exc()
                     if not g.over and g.cur is not g.players[0]:

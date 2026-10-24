@@ -1,34 +1,37 @@
-# 网页炉石
+# Web Hearthstone
 
-**简体中文** | [English](README.en.md)
+**English** | [简体中文](README.zh-CN.md)
 
-**v1.04** · 单机版炉石传说 · 纯 Python 标准库 + 单文件前端 · 零第三方依赖
+**v1.04** · a single-player Hearthstone you run locally · pure Python standard library + one HTML file · zero dependencies
 
-在本地跑一个网页版炉石，自己跟 AI 打。没有美术、没有动画，只有**卡牌效果本身**——
-2014 原版（基础 + 经典）**382 张卡的效果全部实现**，一张空白效果都没有。
+Play a browser-based Hearthstone against an AI. No art, no animation — just the **card effects**.
+All **382 cards** of the original 2014 set (Basic + Classic) are fully implemented:
+every card text does what it says, with zero placeholder cards.
 
 ```
-python3 serve.py        # 浏览器打开 http://localhost:8765
+python3 serve.py        # then open http://localhost:8765
 ```
 
 ---
 
-## 它是什么
+## What it is
 
-一个把炉石规则写成代码的小项目：卡面文本 → 规则表 → 效果原语 → 回合结算。
+A small project that turns Hearthstone rules into code: card text → rule tables → effect
+primitives → turn resolution.
 
-- **卡池**：2014 原版 382 张（基础 + 经典），官方简体中文卡名与卡面
-- **对手**：内置 AI，会算斩杀、会解场、会按场面自己选抉择
-- **组卡**：选职业 → 点卡加入 / 一键随机卡组 → 满 30 张开打
-- **验证**：161 条行为断言 + 1000 局随机对战自检 + 卡面↔代码一致性审计
+- **Card pool** — the full 2014 set (Basic + Classic), 382 cards, official Simplified Chinese names and text
+- **Opponent** — built-in AI that calculates lethal, trades for board, and picks its own Choose One option
+- **Deck building** — pick a class → click cards to add / one-click random deck → 30 cards → play
+- **Verification** — 161 behavioral assertions + 1000-game self-test + card-text↔code audit
 
-没有图片，卡面就是文字。所有精力都花在「这张牌到底有没有按卡面生效」上。
+There are no images; a card face is text. All the effort went into
+"does this card actually do what its text says?"
 
 ---
 
-## 快速开始
+## Quick start
 
-需要 Python 3.9+（只用标准库，不用装任何东西）。
+Requires Python 3.9+ (standard library only — nothing to install).
 
 ```bash
 git clone https://github.com/Kliocp-gpu/web-hearthstone.git
@@ -36,88 +39,98 @@ cd web-hearthstone
 python3 serve.py
 ```
 
-浏览器打开 <http://localhost:8765>。
+Then open <http://localhost:8765>.
 
-**macOS** 也可以直接双击 `启动游戏.command`（自动起服务 + 开浏览器），
-不想玩了双击 `停止游戏.command`。
+**macOS**: you can also double-click `启动游戏.command` (starts the server and opens the browser);
+double-click `停止游戏.command` to stop it.
 
-> 首次双击 `.command` 若提示「来自身份不明的开发者」：右键 → 打开 → 确认一次即可。
+> If macOS blocks the `.command` file the first time ("unidentified developer"):
+> right-click → Open → confirm once.
 >
-> 若本机开了代理导致打不开：把 `127.0.0.1` 加进代理白名单，或换端口 `PORT=9000 python3 serve.py`。
+> If a local proxy prevents the page from loading: add `127.0.0.1` to the proxy bypass list,
+> or use another port: `PORT=9000 python3 serve.py`.
 
 ---
 
-## 怎么玩
+## How to play
 
-**组卡**：选职业 → 左边卡池点卡加入 → 或点「随机卡组」→ 满 30 张 → 「开始对战」
+**Deck building**: pick a class → click cards in the pool to add → or hit "随机卡组" (random deck)
+→ once you have 30 cards, hit "开始对战" (start match).
 
-**对战**：
+**In a match**:
 
-- 点手牌选中 → 要目标的牌点敌方/我方随从或英雄；不要目标的点**己方战场空白处**出牌
-- **抉择牌**（卡面右上角标「抉择」）→ 弹出选项，先选效果，再点目标
-- 点自己的随从 → 点敌方随从/英雄 = 攻击
-- **点自己的英雄** → 点敌方 = 英雄攻击（要有武器；德鲁伊变脸后有攻击力；风怒武器每回合 2 次）
-- 「英雄技能 (2费)」→ 点目标使用
-- 「结束回合」→ AI 自动走完它的回合
+- Click a card in hand to select it → targeted cards need a click on an enemy/friendly minion or hero;
+  non-targeted cards are played by clicking an **empty spot on your own side of the board**
+- **Choose One cards** (marked 「抉择」 in the corner) → a picker pops up; choose an option, then pick a target if needed
+- Click your own minion → click an enemy minion or hero to attack
+- **Click your own hero** → click the enemy to attack with your hero (needs a weapon; Druid shapeshift grants attack;
+  a windfury weapon allows 2 hero attacks per turn)
+- "英雄技能 (2费)" (hero power) → click a target to use it
+- "结束回合" (end turn) → the AI plays out its turn
 
-界面上：绿色 ● = 本回合可攻击；`🔒N` = 场上奥秘数；`过载N` = 本回合被锁住的水晶；
-打不起的牌会变灰；被冻结的英雄显示 `❄冻结`。
+On screen: green ● = can attack this turn; `🔒N` = number of your secrets; `过载N` = mana crystals locked
+by overload this turn; unaffordable cards are dimmed; a frozen hero shows `❄冻结`.
+
+> The UI is in Chinese, since the card data is the official Simplified Chinese set.
 
 ---
 
-## 卡牌实现程度
+## Card coverage
 
-| 状态 | 张数 | 占比 | 含义 |
+| State | Cards | Share | Meaning |
 |---|---|---|---|
-| 完整效果 | **382** | **100%** | 卡面描述全部实现 |
-| 部分效果 | 0 | 0% | 主体能用、条件未还原（卡面会标「部分」） |
-| 白板 | 0 | 0% | 只有费/攻/血（卡面会标「白板」） |
+| Fully implemented | **382** | **100%** | every line of the card text is implemented |
+| Partial | 0 | 0% | main effect works, conditions missing (marked 「部分」 on the card) |
+| Vanilla | 0 | 0% | stats only, no effect (marked 「白板」 on the card) |
 
-已实现的关键词：嘲讽、冲锋、突袭、圣盾、潜行、风怒、吸血、剧毒、复生、法术伤害、
-冻结（含英雄冻结）、沉默、无法攻击、无法被法术指定。
+Implemented keywords: Taunt, Charge, Rush, Divine Shield, Stealth, Windfury, Lifesteal, Poisonous,
+Reborn, Spell Damage, Freeze (including frozen heroes), Silence, Can't Attack, Elusive.
 
-已实现的机制：
+Implemented mechanics:
 
-- **战吼 / 亡语**，多子句复合效果（「造成3点伤害。获得3点护甲」两句都生效）
-- **奥秘** 14 张：法术反制、镜像实体、寒冰屏障、寒冰护体、爆炸陷阱、以眼还眼、崇高牺牲、
-  忏悔、冰冻陷阱、狙击、毒蛇陷阱、误导、蒸发、救赎
-- **过载**（下回合真的锁水晶）、**连击**（本回合先出过牌才触发）
-- **抉择** 10 张德鲁伊牌：出牌弹窗二选一，AI 也会按场面自己选
-- **动态费用** 9 张：山岭/熔核/海巨人、恐怖海盗按手牌·伤口·场面·武器实时算；
-  巫师学徒、召唤传送门、法力怨魂、小个子召唤师、伺机待发改别人的费用
-- **种族光环**：森林狼、鱼人领军、南海船长、苔原犀牛（给野兽冲锋）、老瞎眼
-- **触发类**：回合开始/结束、施法后、召唤随从后、受伤时、治疗时、友方野兽死亡、出过载牌
-- **激怒**（暴怒的狼人：受伤后 +1 攻且风怒）、**攻击力=生命值**（光耀之子）
-- **武器**：耐久、攻击后触发（真银圣剑回血）、血吼打随从不掉耐久、
-  角斗士的长弓攻击时免疫、毁灭之锤每回合 2 次英雄攻击
-- **时限效果**：回合结束死亡（力量的代价 / 自然之力树人）、潜行到下个回合（隐藏）、
-  随从本回合不低于 1 血（命令怒吼）、手牌临时降价（视界术 / 暗影步）、
-  下回合回手（裂颅之击）
-- **英雄层面**：换英雄（加拉克苏斯 → 15 血 + 血怒 + 召唤地狱火技能）、
-  暗影形态改技能（2 伤 → 3 伤）、英雄被冻结、先知维伦（法伤与治疗翻倍）、
-  奥金尼灵魂祭司（治疗改伤害）
-- **衍生牌**：香蕉、梦境牌、和弦牌、树人、地狱火等，都在卡池里但不是可收集卡
+- **Battlecry / Deathrattle**, multi-clause effects ("Deal 3 damage. Gain 3 Armor." — both resolve)
+- **Secrets** — 14 of them: Counterspell, Mirror Entity, Ice Barrier, Ice Block, Explosive Trap,
+  Eye for an Eye, Noble Sacrifice, Repentance, Freezing Trap, Snipe, Snake Trap, Misdirection,
+  Vaporize, Redemption
+- **Overload** (actually locks crystals next turn), **Combo** (triggers only if you played a card first this turn)
+- **Choose One** — 10 Druid cards; a picker on play, and the AI picks based on the board
+- **Dynamic costs** — 9 cards: Mountain/Molten/Sea Giant and Dread Corsair are costed live from hand size,
+  hero damage, board size and weapon attack; Sorcerer's Apprentice, Summoning Portal, Mana Wraith,
+  Pint-Sized Summoner and Preparation modify other cards' costs
+- **Tribal auras** — Dire Wolf Alpha, Murloc Warleader, Southsea Captain, Tundra Rhino (Charge for Beasts), Old Murk-Eye
+- **Triggers** — turn start/end, after a spell, after summoning, on damage, on heal, friendly Beast died, Overload card played
+- **Enrage** (Raging Worgen: +1 Attack and Windfury while damaged), **Attack = Health** (Lightspawn)
+- **Weapons** — durability, on-attack triggers (Truesilver Champion heals), Gorehowl doesn't lose durability
+  when hitting minions, Gladiator's Longbow is immune while attacking, Doomhammer grants 2 hero attacks per turn
+- **Duration effects** — dies at end of turn (Power Overwhelming / Force of Nature treants), stealth until
+  your next turn (Conceal), your minions can't drop below 1 Health this turn (Commanding Shout),
+  temporary hand discounts (Far Sight / Shadowstep), return to hand next turn (Headcrack)
+- **Hero level** — hero replacement (Lord Jaraxxus → 15 Health + Blood Fury + summon an Infernal),
+  Shadowform changes the hero power (2 → 3 damage), frozen hero, Prophet Velen (double spell damage and healing),
+  Auchenai Soulpriest (healing becomes damage)
+- **Tokens** — Banana, Dream cards, Power Chord cards, Treants, Infernals, etc. — in the card pool but not collectible
 
 ---
 
-## 项目结构
+## Project layout
 
-| 文件 | 作用 |
+| File | Purpose |
 |---|---|
-| `engine.py` | 规则引擎：实体、事件系统、效果原语、回合/战斗/死亡结算、奥秘钩子、费用计算 |
-| `cards.py` | 卡池（**自动生成，别手改**）—— 382 张 |
-| `gen_cards.py` | 卡面文本 → `cards.py` 的生成器。顶部 `RELEASES` / `ENABLED` 控制做到第几个版本 |
-| `ai.py` | AI 对手：局面估值 + 贪心出牌 |
-| `serve.py` | 本地 HTTP 服务 + JSON API（`/api/start`、`/api/play`、`/api/attack`…） |
-| `static/index.html` | 界面，单文件（内联 CSS/JS），无框架 |
-| `selftest.py` | 冒烟测试：随机卡组自动打 N 局，检查崩溃与卡效果报错 |
-| `test_cards.py` | 行为级验证：161 条断言，逐张检查关键卡是否真的按卡面生效 |
-| `test_api.py` | 接口层回归：28 条断言，检查错误码、失败原因、失败时局面不变 |
-| `audit.py` | 卡面 ↔ 代码一致性审计：卡面说「造成伤害」，代码里就必须有相应调用 |
+| `engine.py` | Rules engine: entities, event system, effect primitives, turn/combat/death resolution, secret hooks, cost calculation |
+| `cards.py` | The card pool (**auto-generated — don't hand-edit**) — 382 cards |
+| `gen_cards.py` | Card text → `cards.py` generator. `RELEASES` / `ENABLED` at the top select how many sets are included |
+| `ai.py` | AI opponent: board evaluation + greedy play |
+| `serve.py` | Local HTTP server + JSON API (`/api/start`, `/api/play`, `/api/attack`, …) |
+| `static/index.html` | The UI, single file (inline CSS/JS), no framework |
+| `selftest.py` | Smoke test: play N random-deck games, check for crashes and card-effect errors |
+| `test_cards.py` | Behavioral tests: 161 assertions that key cards really do what their text says |
+| `test_api.py` | HTTP-layer regression: 28 assertions on error codes, reasons, and state preservation |
+| `audit.py` | Card-text ↔ code audit: if the text says "deal damage", the code must contain the corresponding call |
 
-### 为什么卡是「生成」出来的
+### Why cards are generated
 
-382 张卡不手写。每张卡是**声明式数据**，效果由引擎里的小原语拼出来：
+The 382 cards are not hand-written. Each card is **declarative data**, with its effect assembled from
+small primitives in the engine:
 
 ```python
 register('VAN_CS2_029', name='火球术', cost=4, type='SPELL',
@@ -125,76 +138,78 @@ register('VAN_CS2_029', name='火球术', cost=4, type='SPELL',
          targeting='any', cls='MAGE')
 ```
 
-`gen_cards.py` 读 HearthstoneJSON 的英文卡面做解析、中文卡面做显示，按规则表把文本
-翻成上面这种 lambda。解析不出来的句子会被诚实降级（标「部分」或「白板」），
-而不是硬塞一个错的效果。
+`gen_cards.py` parses the English card text from HearthstoneJSON (Chinese text is used for display)
+and translates it into the lambda above via rule tables. Sentences it can't parse are honestly
+downgraded (marked partial or vanilla) instead of being given a wrong effect.
 
-规则表（`gen_cards.py`）：
+Rule tables (in `gen_cards.py`):
 
-| 表 | 管什么 |
+| Table | Handles |
 |---|---|
-| `SPECIAL_RULES` | 跨句 / 带条件（「A；如果…则改为 B」）的整段效果 —— 在拆战吼-亡语**之前**匹配 |
-| `PRIORITY_RULES` | 复合句（「造成X伤害并冻结」）—— 必须排最前，否则会被通用规则截成半句 |
-| `RULES` | 普通效果句，顺序即优先级 |
-| `TRIGGER_RULES` | 触发句式 → `(事件, 判断条件, 效果代码)` |
-| `AURA_RULES` | 光环 / 被动（种族光环、激怒、攻击力=生命值） |
-| `CHOOSE_OPT_RULES` | 抉择牌里的省略主语的残句（「+5攻击力」） |
-| `COST_RULES` | 动态费用句 → 标记参数（真正计算在 `Game.cost()`） |
+| `SPECIAL_RULES` | Cross-sentence / conditional effects ("A; if …, do B instead") — matched **before** splitting battlecry-deathrattle |
+| `PRIORITY_RULES` | Compound sentences ("Deal X damage and Freeze") — must come first, or a generic rule truncates them |
+| `RULES` | Ordinary effect sentences, order = priority |
+| `TRIGGER_RULES` | Trigger phrasing → `(event, guard, effect code)` |
+| `AURA_RULES` | Auras / passives (tribal auras, enrage, Attack = Health) |
+| `CHOOSE_OPT_RULES` | Subject-less fragments inside Choose One options ("+5 Attack") |
+| `COST_RULES` | Dynamic-cost sentences → flags (the actual math lives in `Game.cost()`) |
 
 ---
 
-## 验证
+## Verification
 
 ```bash
-python3 test_cards.py       # 161/161 通过（逐张验证行为，不是数数量）
-python3 test_api.py         # 28/28 通过（接口层：错误码、失败原因、失败时局面不变）
-python3 selftest.py 1000    # 1000 局随机对战，0 卡效果报错
-python3 audit.py            # 卡面↔代码审计，0 空壳
+python3 test_cards.py       # 161/161 (verifies behavior card by card, not just counting)
+python3 test_api.py         # 28/28 (HTTP layer: error codes, reasons, state untouched on failure)
+python3 selftest.py 1000    # 1000 random games, 0 card-effect errors
+python3 audit.py            # card-text ↔ code audit, 0 empty shells
 ```
 
-`audit.py` 存在的原因：**数量统计会骗人**。项目中途出现过「47% 已实现」里混着 87 张
-只有费/攻/血、但没有实际代码的空壳卡。现在卡面提了「造成伤害」，代码里就必须有对应调用，
-否则审计直接报错。
+`audit.py` exists because **counting cards lies**. Mid-project, the "47% implemented" figure included
+87 cards that had stats but no actual effect code. Now, if the card text says "deal damage", the code
+must contain the corresponding call, or the audit fails.
 
-`test_api.py` 存在的原因：**规则对不等于操作顺手**。出牌失败时到底是「不该点」还是
-「程序没反应」，只有从 HTTP 这一层才测得出来——它保证每个失败都带错误码和人话原因、
-并且失败时局面一个字节都不变（不扣费、不掉牌、不清选择）。
+`test_api.py` exists because **correct rules don't mean a smooth UI**. Whether a failed play is
+"you shouldn't click that" or "the program did nothing" is only observable at the HTTP layer —
+it guarantees every failure carries an error code and a human-readable reason, and that a failed
+action leaves the board completely untouched (no mana spent, no card lost, no selection cleared).
 
 ---
 
-## 路线图
+## Roadmap
 
-按扩展包发布顺序推进，一个版本一个版本加：
+Sets are added in release order, one at a time:
 
-- [x] **2014 原版**（基础 + 经典）—— 382 张，100%
-- [ ] 纳克萨玛斯的诅咒（NAXX，2014-07）
-- [ ] 地精大战侏儒（GVG，2014-12）
+- [x] **2014 Classic** (Basic + Classic) — 382 cards, 100%
+- [ ] Curse of Naxxramas (NAXX, 2014-07)
+- [ ] Goblins vs Gnomes (GVG, 2014-12)
 - [ ] …
 
-加新版本只需要改 `gen_cards.py` 顶部：
+Adding a set only requires editing the top of `gen_cards.py`:
 
 ```python
 RELEASES = [
     ("VANILLA", "2014 原版（基础 + 经典）"),
-    ("NAXX",    "纳克萨玛斯的诅咒"),      # 去掉注释
+    ("NAXX",    "纳克萨玛斯的诅咒"),      # uncomment
 ]
 ENABLED = 2        # 1 → 2
 ```
 
-然后 `python3 gen_cards.py` → `python3 selftest.py 300`。
-遇到没见过的机制，就往规则表加一条 + 在 `engine.py` 加一个原语。
+Then `python3 gen_cards.py` → `python3 selftest.py 300`.
+When you meet an unseen mechanic, add a rule-table entry and a primitive in `engine.py`.
 
 ---
 
-## 法律声明
+## Legal
 
-**使用前请确认已拥有正版游戏。** 《炉石传说》（Hearthstone）及相关商标归
-Blizzard Entertainment, Inc. 所有。本项目是**独立的、非商业性的粉丝作品**，
-与 Blizzard Entertainment 无任何关联，亦未获其认可、授权或赞助。
+**You must own a copy of the game.** Hearthstone is a trademark of Blizzard Entertainment, Inc.
+This is an **independent, non-commercial fan project**. It is not affiliated with, endorsed by,
+or sponsored by Blizzard Entertainment.
 
-- 本仓库的**代码**以 MIT 许可发布（见 [LICENSE](LICENSE)）。该许可仅覆盖代码本身，
-  **不覆盖**《炉石传说》及其卡名、卡面描述、美术资源等任何暴雪知识产权。
-- 卡名与卡面文本来自公开数据集 [HearthstoneJSON](https://hearthstonejson.com/)，
-  仅用于本地、单机、非商业性的规则复刻。
-- 仓库内**不含**任何官方美术、音频或素材文件。
-- 请仅在个人、离线环境下自用，勿用于商业用途。
+- The **code** in this repository is released under the MIT License (see [LICENSE](LICENSE)).
+  That license covers the code only — **not** Hearthstone, its card names, card texts,
+  artwork, or any other Blizzard intellectual property.
+- Card names and card texts come from the public [HearthstoneJSON](https://hearthstonejson.com/)
+  dataset and are used only for a local, single-player, non-commercial reimplementation of the rules.
+- **No official artwork, audio, or asset files** are included in this repository.
+- Use it only for personal, offline play — not for any commercial purpose.

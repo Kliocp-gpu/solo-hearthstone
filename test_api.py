@@ -7,6 +7,7 @@
 用法：python3 test_api.py
 """
 import json
+import random
 import threading
 import urllib.error
 import urllib.request
@@ -61,13 +62,24 @@ def signature(st):
             len(me["board"]), me["deck"], len(st.get("log") or []))
 
 
-def fresh(port, cls="MAGE"):
-    """固定种子 + 固定卡组开局，方便复现"""
-    return api(port, "/api/start", {
-        "cls": cls,
-        "seed": 12345,
-        "deck": ["VAN_CS2_182"] * 30,      # 全是 4 费雪人：法力不够 / 手牌位置都好构造
-    })
+def legal_deck(cls="MAGE", n=30):
+    """构造一套合法卡组：15 张非传说各带 2 张"""
+    pool = [cid for cid, d in serve.CARDS.items()
+            if not d.get("token")
+            and d.get("type") in ("MINION", "SPELL", "WEAPON")
+            and d.get("cls") in (cls, "NEUTRAL")
+            and d.get("rarity") != "LEGENDARY"]
+    deck = []
+    for cid in pool:
+        deck.extend([cid, cid])
+        if len(deck) >= n:
+            break
+    return deck[:n]
+
+
+def fresh(port, cls="MAGE", seed=12345):
+    """固定种子 + 合法卡组开局，方便复现"""
+    return api(port, "/api/start", {"cls": cls, "seed": seed, "deck": legal_deck(cls)})
 
 
 def main():
@@ -88,16 +100,97 @@ def main():
         code, r = api(port, "/api/start", {"cls": "NOT_A_CLASS"})
         check("未知职业 → 400 bad_request",
               code == 400 and r["error"]["code"] == "bad_request", f"{code} {r}")
+        code, r = api(port, "/api/start", {"cls": "DEATHKNIGHT",
+                                           "deck": legal_deck("MAGE")})
+        check("当前卡池没有职业牌的职业被拒绝",
+              code == 400 and r["error"]["code"] == "bad_request", f"{code} {r}")
         code, r = api(port, "/api/start", {"deck": "not-a-list"})
         check("deck 不是数组 → 400 bad_request",
               code == 400 and r["error"]["code"] == "bad_request", f"{code} {r}")
 
+        print("=== 牌组合法性（服务端校验）===")
+        base = legal_deck("MAGE")
+        code, r = api(port, "/api/start", {"cls": "MAGE", "deck": base + [base[0]]})
+        check("31 张 → invalid_deck 且说明张数",
+              code == 400 and r["error"]["code"] == "invalid_deck"
+              and "30" in r["error"]["message"], f"{code} {r.get('error')}")
+        code, r = api(port, "/api/start", {"cls": "MAGE", "deck": base[:27]})
+        check("27 张 → invalid_deck", code == 400
+              and r["error"]["code"] == "invalid_deck", f"{code} {r.get('error')}")
+
+        d3 = base[:27] + [base[0]] * 3
+        code, r = api(port, "/api/start", {"cls": "MAGE", "deck": d3})
+        check("同一张卡 3 张 → invalid_deck 且提示上限 2",
+              code == 400 and "2 张" in r["error"]["message"], f"{code} {r.get('error')}")
+
+        legend = next(cid for cid, d in serve.CARDS.items()
+                      if d.get("rarity") == "LEGENDARY" and d.get("cls") in ("MAGE", "NEUTRAL"))
+        dleg = base[:28] + [legend, legend]
+        code, r = api(port, "/api/start", {"cls": "MAGE", "deck": dleg})
+        check("传说带 2 张 → invalid_deck 且提示上限 1",
+              code == 400 and "1 张" in r["error"]["message"], f"{code} {r.get('error')}")
+
+        priest = next(cid for cid, d in serve.CARDS.items()
+                      if d.get("cls") == "PRIEST" and not d.get("token"))
+        dcls = base[:29] + [priest]
+        code, r = api(port, "/api/start", {"cls": "MAGE", "deck": dcls})
+        check("别职业的卡 → invalid_deck 且点名职业",
+              code == 400 and "不能放进" in r["error"]["message"], f"{code} {r.get('error')}")
+
+        dno = base[:29] + ["NOT_A_CARD"]
+        code, r = api(port, "/api/start", {"cls": "MAGE", "deck": dno})
+        check("不存在的卡 id → invalid_deck",
+              code == 400 and "不存在" in r["error"]["message"], f"{code} {r.get('error')}")
+
+        dtok = base[:29] + ["TOKEN_BANANA"]
+        code, r = api(port, "/api/start", {"cls": "MAGE", "deck": dtok})
+        check("衍生牌进卡组 → invalid_deck",
+              code == 400 and "衍生牌" in r["error"]["message"], f"{code} {r.get('error')}")
+
         code, r = fresh(port)
-        check("合法开局返回 ok + state",
-              code == 200 and r.get("ok") and r.get("state"), f"{code} {r}")
+        check("合法卡组开局成功", code == 200 and r.get("ok") and r.get("state"),
+              f"{code} {r}")
+        check("开局回传 seed（可复现）", "seed" in r and r["seed"] == 12345, r.get("seed"))
+
+        print("=== AI 卡组与职业必须一致 ===")
         g = serve.STATE["game"]
+        check("AI 职业与响应里的 ai_cls 一致",
+              r.get("ai_cls") == g.players[1].cls, f"{r.get('ai_cls')} vs {g.players[1].cls}")
+        bad = [cid for cid in g.players[1].deck
+               if serve.CARDS.get(cid, {}).get("cls") not in (g.players[1].cls, "NEUTRAL")]
+        check("AI 牌库里没有别职业的牌", not bad, bad[:3])
+        cnt = {}
+        for cid in g.players[1].deck:
+            cnt[cid] = cnt.get(cid, 0) + 1
+        over = [cid for cid, n in cnt.items()
+                if n > (1 if serve.CARDS[cid].get("rarity") == "LEGENDARY" else 2)]
+        check("AI 牌库没有超出张数上限", not over, over[:3])
+        check("AI 牌库总数没被打乱（30 = 剩余牌库 + 起手 - 幸运币）",
+              len(g.players[1].deck) + len(g.players[1].hand) - 1 == 30,
+              f"{len(g.players[1].deck)} + {len(g.players[1].hand)} - 1")
+
+        # 直接验生成器本身：9 个职业各 8 个种子，生成的 30 张都必须合法
+        bad_gen = []
+        for c in serve.collectible_classes():
+            for s in range(8):
+                d = serve.random_deck(random.Random(s), c)
+                err = serve.deck_error(d, c)
+                if err != (None, None):
+                    bad_gen.append((c, s, err))
+        check("随机卡组生成器对每个职业都给出合法 30 张", not bad_gen, bad_gen[:2])
+
+        print("=== 同种子可复现 ===")
+        _, r1 = fresh(port, seed=777)
+        hand1 = [c["cid"] for c in r1["state"]["me"]["hand"]]
+        ai_cls1 = r1["ai_cls"]
+        _, r2 = fresh(port, seed=777)
+        hand2 = [c["cid"] for c in r2["state"]["me"]["hand"]]
+        check("同 seed 同卡组 → 起手完全一致", hand1 == hand2, f"{hand1} vs {hand2}")
+        check("同 seed → AI 职业一致", ai_cls1 == r2["ai_cls"], f"{ai_cls1} vs {r2['ai_cls']}")
 
         print("=== 出牌失败：给原因，且局面不变 ===")
+        fresh(port)                       # 换一局干净的，后面手动调法力
+        g = serve.STATE["game"]
         before = signature(api(port, "/api/state")[1]["state"])
         code, r = api(port, "/api/play", {"idx": 99})
         check("手牌位置越界 → 400",
@@ -108,8 +201,12 @@ def main():
         check("越界出牌后局面没有任何变化",
               signature(r["state"]) == before, f"{before} → {signature(r['state'])}")
 
-        # 0 费幸运币不在手（先手没有），手上全是 4 费雪人，起始 1 费 → 必定打不出
-        code, r = api(port, "/api/play", {"idx": 0})
+        # 把法力归零，任何一张正费牌都打不出
+        g.players[0].mana = 0
+        st = api(port, "/api/state")[1]["state"]
+        idx = next(i for i, c in enumerate(st["me"]["hand"]) if c["cost"] > 0)
+        before = signature(st)
+        code, r = api(port, "/api/play", {"idx": idx})
         check("法力不够 → 400 且说明差多少",
               code == 400 and "法力水晶" in r["error"]["message"], f"{code} {r}")
         check("法力不够时局面不变（不扣费、不掉牌）",
@@ -119,13 +216,18 @@ def main():
         code, r = api(port, "/api/attack", {"src": 3, "target": {"side": "foe", "i": 0}})
         check("随从位置越界 → 400 bad_source",
               code == 400 and r["error"]["code"] == "bad_source", f"{code} {r}")
-        # 手上只有雪人，先给场上放一个随从再测「本回合不能攻击」
+
+        # 打一个没有冲锋的随从上去，测「当回合不能攻击」
         g.players[0].mana = 10
-        code, r = api(port, "/api/play", {"idx": 0})
+        st = api(port, "/api/state")[1]["state"]
+        midx = next(i for i, c in enumerate(st["me"]["hand"])
+                    if c["type"] == "MINION"
+                    and not serve.CARDS[c["cid"]].get("charge"))
+        code, r = api(port, "/api/play", {"idx": midx})
+        check("先打出一个随从", code == 200, f"{code} {r.get('error')}")
         code, r = api(port, "/api/attack", {"src": 0, "target": {"side": "foe", "i": -1}})
-        check("刚出的随从攻击英雄 → 400 且说明原因",
-              code == 400 and ("攻击" in r["error"]["message"]
-                               or "嘲讽" in r["error"]["message"]), f"{code} {r}")
+        check("当回合刚出的随从攻击英雄 → 400 且说明原因",
+              code == 400 and "攻击" in r["error"]["message"], f"{code} {r}")
         check("攻击失败时局面不变",
               signature(r["state"]) == signature(api(port, "/api/state")[1]["state"]), r)
 

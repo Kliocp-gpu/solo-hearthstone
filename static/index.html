@@ -70,6 +70,7 @@ button:disabled{opacity:.4;cursor:default}
     <button id="go" onclick="startGame()" disabled>开始对战</button>
     <button onclick="backToDeck()" class="hidden" id="back">返回组卡</button>
     <span id="hint" style="color:#fa3"></span>
+    <span id="seed" class="st-legend"></span>
   </div>
   <div id="notice" class="hidden"></div>
 </div>
@@ -240,6 +241,7 @@ async function startGame(){
     document.getElementById('viewGame').classList.remove('hidden');
     document.getElementById('back').classList.remove('hidden');
     document.getElementById('go').disabled=true;
+    document.getElementById('seed').textContent = r.seed ? `本局种子 ${r.seed}` : '';
     SEL=null; render(r.state, r.hp_used);
   }catch(e){
     notice('开局失败：' + e.message);
