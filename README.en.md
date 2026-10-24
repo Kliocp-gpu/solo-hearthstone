@@ -124,6 +124,7 @@ Implemented mechanics:
 | `static/index.html` | The UI, single file (inline CSS/JS), no framework |
 | `selftest.py` | Smoke test: play N random-deck games, check for crashes and card-effect errors |
 | `test_cards.py` | Behavioral tests: 161 assertions that key cards really do what their text says |
+| `test_api.py` | HTTP-layer regression: 28 assertions on error codes, reasons, and state preservation |
 | `audit.py` | Card-text ↔ code audit: if the text says "deal damage", the code must contain the corresponding call |
 
 ### Why cards are generated
@@ -159,6 +160,7 @@ Rule tables (in `gen_cards.py`):
 
 ```bash
 python3 test_cards.py       # 161/161 (verifies behavior card by card, not just counting)
+python3 test_api.py         # 28/28 (HTTP layer: error codes, reasons, state untouched on failure)
 python3 selftest.py 1000    # 1000 random games, 0 card-effect errors
 python3 audit.py            # card-text ↔ code audit, 0 empty shells
 ```
@@ -166,6 +168,11 @@ python3 audit.py            # card-text ↔ code audit, 0 empty shells
 `audit.py` exists because **counting cards lies**. Mid-project, the "47% implemented" figure included
 87 cards that had stats but no actual effect code. Now, if the card text says "deal damage", the code
 must contain the corresponding call, or the audit fails.
+
+`test_api.py` exists because **correct rules don't mean a smooth UI**. Whether a failed play is
+"you shouldn't click that" or "the program did nothing" is only observable at the HTTP layer —
+it guarantees every failure carries an error code and a human-readable reason, and that a failed
+action leaves the board completely untouched (no mana spent, no card lost, no selection cleared).
 
 ---
 

@@ -51,6 +51,11 @@ button:disabled{opacity:.4;cursor:default}
 #chooseBox .ct{color:#fa3;font-size:12px;margin-bottom:8px}
 #chooseBox button{margin:0 6px 6px 0}
 .tag-choose{background:#3a6b5c;border-radius:3px;padding:0 3px;color:#cfe;font-size:10px}
+#notice{margin-top:8px;padding:7px 10px;border-radius:5px;font-size:13px;line-height:1.5}
+#notice.err{background:#3a1f22;border:1px solid #a4494f;color:#f4b0b6}
+#notice.info{background:#1f2f3a;border:1px solid #3d6b8a;color:#b7d7ef}
+#notice .x{float:right;cursor:pointer;color:#999;margin-left:12px}
+#notice .x:hover{color:#ddd}
 </style>
 </head>
 <body>
@@ -66,6 +71,7 @@ button:disabled{opacity:.4;cursor:default}
     <button onclick="backToDeck()" class="hidden" id="back">返回组卡</button>
     <span id="hint" style="color:#fa3"></span>
   </div>
+  <div id="notice" class="hidden"></div>
 </div>
 
 <!-- 组卡视图 -->
@@ -114,21 +120,58 @@ let ALL=[], DECK=[], S=null, SEL=null, CN={}, HP={};
 
 async function api(path, body){
   const opt = body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {};
-  const r = await fetch(path, opt);
-  return r.json();
+  let r;
+  try {
+    r = await fetch(path, opt);
+  } catch(e){
+    // 网络层失败（服务没起、端口没了、代理挡了 127.0.0.1）
+    throw {code:'network', message:'连不上本地服务：确认 serve.py 还在运行，或代理是否挡了 127.0.0.1'};
+  }
+  let data = null;
+  try {
+    data = await r.json();
+  } catch(e){
+    throw {code:'bad_response',
+           message:`服务返回了无法解析的内容（HTTP ${r.status}），看终端有没有报错`};
+  }
+  if(!r.ok || data.ok === false){
+    const err = (data && data.error) || {};
+    throw {code: err.code || ('http_' + r.status),
+           message: err.message || `操作失败（HTTP ${r.status}）`,
+           state: data && data.state,
+           hp_used: data && data.hp_used};
+  }
+  return data;
+}
+
+// ---- 统一的提示条：成功不弹，失败/结算才显示 ----
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function notice(msg, kind){
+  const el = document.getElementById('notice');
+  el.className = kind === 'info' ? 'info' : 'err';
+  el.innerHTML = `<span class="x" onclick="clearNotice()">✕</span>${esc(msg)}`;
+}
+function clearNotice(){
+  const el = document.getElementById('notice');
+  el.className = 'hidden';
+  el.innerHTML = '';
 }
 
 async function loadPool(){
-  const d = await api('/api/cards?cls='+document.getElementById('cls').value);
-  ALL = d.cards;
-  const sel = document.getElementById('cls');
-  d.classes.forEach(c=>{CN[c.id]=c.name});
-  HP = d.hero_powers || {};
-  if(sel.options.length===0){
-    d.classes.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;sel.appendChild(o)});
-    sel.value='MAGE';
+  try{
+    const d = await api('/api/cards?cls='+document.getElementById('cls').value);
+    ALL = d.cards;
+    const sel = document.getElementById('cls');
+    d.classes.forEach(c=>{CN[c.id]=c.name});
+    HP = d.hero_powers || {};
+    if(sel.options.length===0){
+      d.classes.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;sel.appendChild(o)});
+      sel.value='MAGE';
+    }
+    drawPool();
+  }catch(e){
+    notice('加载卡池失败：' + e.message);
   }
-  drawPool();
 }
 
 const RAR_CN={LEGENDARY:'传说',EPIC:'史诗',RARE:'稀有',COMMON:'普通'};
@@ -182,17 +225,28 @@ function add(cid){
 }
 function remove(cid){ const i=DECK.lastIndexOf(cid); if(i>=0){DECK.splice(i,1); drawPool();} }
 function clearDeck(){ DECK=[]; drawPool(); }
-async function randomDeck(){ const d=await api('/api/random_deck',{cls:document.getElementById('cls').value}); DECK=d.deck; drawPool(); }
+async function randomDeck(){
+  try{
+    const d = await api('/api/random_deck',{cls:document.getElementById('cls').value});
+    DECK=d.deck; drawPool(); clearNotice();
+  }catch(e){ notice('生成随机卡组失败：' + e.message); }
+}
 
 async function startGame(){
-  const r = await api('/api/start',{deck:DECK, cls:document.getElementById('cls').value});
-  document.getElementById('viewDeck').classList.add('hidden');
-  document.getElementById('viewGame').classList.remove('hidden');
-  document.getElementById('back').classList.remove('hidden');
-  document.getElementById('go').disabled=true;
-  SEL=null; render(r.state, r.hp_used);
+  clearNotice();
+  try{
+    const r = await api('/api/start',{deck:DECK, cls:document.getElementById('cls').value});
+    document.getElementById('viewDeck').classList.add('hidden');
+    document.getElementById('viewGame').classList.remove('hidden');
+    document.getElementById('back').classList.remove('hidden');
+    document.getElementById('go').disabled=true;
+    SEL=null; render(r.state, r.hp_used);
+  }catch(e){
+    notice('开局失败：' + e.message);
+  }
 }
 function backToDeck(){
+  clearNotice();
   document.getElementById('viewGame').classList.add('hidden');
   document.getElementById('viewDeck').classList.remove('hidden');
   document.getElementById('back').classList.add('hidden');
@@ -299,8 +353,7 @@ async function pickChoice(i, k){
     document.getElementById('hint').textContent = `已选「${opt.label}」→ 点击目标`;
     return;
   }
-  const r = await api('/api/play',{idx:i, choice:k, target:null});
-  after(r);
+  await act('/api/play',{idx:i, choice:k, target:null});
 }
 
 async function pick(side, i){
@@ -310,17 +363,13 @@ async function pick(side, i){
   }
   const t = {side, i};
   if(SEL.kind==='hand'){
-    const r = await api('/api/play',{idx:SEL.i, target:t, choice:SEL.choice});
-    after(r);
+    await act('/api/play',{idx:SEL.i, target:t, choice:SEL.choice});
   } else if(SEL.kind==='board'){
-    const r = await api('/api/attack',{src:SEL.i, target:t});
-    after(r);
+    await act('/api/attack',{src:SEL.i, target:t});
   } else if(SEL.kind==='power'){
-    const r = await api('/api/heropower',{target:t});
-    after(r);
+    await act('/api/heropower',{target:t});
   } else if(SEL.kind==='hero'){
-    const r = await api('/api/heroattack',{target:t});
-    after(r);
+    await act('/api/heroattack',{target:t});
   }
 }
 
@@ -328,8 +377,7 @@ async function pick(side, i){
 document.getElementById('meBoard').addEventListener('click', async e=>{
   if(e.target.id!=='meBoard') return;
   if(SEL && SEL.kind==='hand'){
-    const r = await api('/api/play',{idx:SEL.i, target:null, choice:SEL.choice});
-    after(r);
+    await act('/api/play',{idx:SEL.i, target:null, choice:SEL.choice});
   }
 });
 
@@ -351,13 +399,49 @@ function selHero(){
   }
 }
 
-async function endTurn(){ const r=await api('/api/end',{}); after(r); }
+async function endTurn(){
+  if(S && S.over) return;                       // 结算后不再往服务端发无效请求
+  await act('/api/end', {});
+}
+
+// 动作统一入口：成功 → after()；失败 → failed()（保留局面与选择状态）
+async function act(path, body){
+  try{
+    const r = await api(path, body);
+    after(r);
+    return true;
+  }catch(e){
+    failed(e);
+    return false;
+  }
+}
 
 function after(r){
+  clearNotice();
   SEL=null;
   document.getElementById('chooseBox').classList.add('hidden');
   if(r.state) render(r.state, r.hp_used);
-  document.getElementById('hint').textContent = r.state && r.state.over ? (r.state.winner==='你'?'★ 你赢了':'你输了') : '';
+  if(r.state && r.state.over){
+    notice(r.state.winner==='你'
+      ? '对局结束：你赢了。点「返回组卡」可以再来一局。'
+      : '对局结束：你输了。点「返回组卡」可以再来一局。', 'info');
+  }
+}
+
+// 失败：局面原样保留（服务端会带回 state），只有「局面不在」时才放弃选择状态
+function failed(e){
+  if(e.state) render(e.state, e.hp_used);
+  if(!e.state && (e.code==='network' || e.code==='bad_response' || e.code==='no_game')){
+    SEL=null;
+    document.getElementById('chooseBox').classList.add('hidden');
+  }
+  if(e.code==='no_game'){                 // 服务端丢了对局（重启/刷新）→ 退回组卡
+    S=null;
+    document.getElementById('viewGame').classList.add('hidden');
+    document.getElementById('viewDeck').classList.remove('hidden');
+    document.getElementById('back').classList.add('hidden');
+  }
+  notice(e.message || '操作失败');
 }
 
 document.getElementById('cls').addEventListener('change', ()=>{ DECK=[]; loadPool(); });

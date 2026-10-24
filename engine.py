@@ -1697,6 +1697,13 @@ class Game:
         self.log: list[str] = []
         self.over = False
         self.winner = None
+        # 动作失败的原因（中文，给界面直接展示）。成功时清空，失败时由 fail() 写入。
+        self.last_error = None
+
+    def fail(self, reason: str):
+        """记录失败原因并返回 False，让 play_card/attack/... 的布尔返回值保持不变"""
+        self.last_error = reason
+        return False
 
     # -- 基础查询 --
     @property
@@ -1909,13 +1916,16 @@ class Game:
         return bool(d) and p.mana >= self.cost(p, cid)
 
     def play_card(self, p: Player, idx: int, target=None, choice=None) -> bool:
+        self.last_error = None
         if idx < 0 or idx >= len(p.hand):
-            return False
+            return self.fail("手牌位置无效")
         cid = p.hand[idx]
         d = CARDS.get(cid)
         cost = self.cost(p, cid)
-        if not d or p.mana < cost:
-            return False
+        if not d:
+            return self.fail("这张牌没有数据")
+        if p.mana < cost:
+            return self.fail(f"法力水晶不够（需要 {cost}，只有 {p.mana}）")
         if d.get("choose") and not (choice is not None and 0 <= choice < len(d["choose"])):
             choice = 0                 # 没选就默认第一个选项（AI / 误点兜底）
         # 精灵龙这类「无法被法术指定」、以及敌方的潜行随从：目标不对就直接打不出（不扣费）
@@ -1923,7 +1933,7 @@ class Game:
                 getattr(target, "elusive", False)
                 or (target.stealth and target.owner_id != p.pid)):
             self.say(f"  {target.name} 无法被法术指定")
-            return False
+            return self.fail(f"{target.name} 无法被法术指定")
         p.mana -= cost
         if d.get("type") == "SPELL":
             p.next_spell_discount = 0          # 消耗掉减费（伺机待发自己会再设上）
@@ -2045,18 +2055,23 @@ class Game:
 
     # -- 攻击 --
     def attack(self, attacker: Minion, tgt) -> bool:
-        if attacker.attacks_left <= 0 or attacker.frozen or attacker.atk <= 0:
-            return False
+        self.last_error = None
+        if attacker.attacks_left <= 0:
+            return self.fail(f"{attacker.name} 本回合已经攻击过了")
+        if attacker.frozen:
+            return self.fail(f"{attacker.name} 被冻结，无法攻击")
+        if attacker.atk <= 0:
+            return self.fail(f"{attacker.name} 攻击力为 0")
         if is_minion(tgt) and tgt not in self.foe_of(self.players[attacker.owner_id]).board:
-            return False
+            return self.fail("目标不在对方场上")
         if is_minion(tgt) and not tgt.attackable:      # 潜行随从不能被攻击
-            return False
+            return self.fail(f"{tgt.name} 潜行中，不能被攻击")
         if not is_minion(tgt) and not attacker.can_attack_hero:
-            return False
+            return self.fail(f"{attacker.name} 当回合不能攻击英雄（突袭）")
         taunts = [m for m in self.foe_of(self.players[attacker.owner_id]).board
                   if m.taunt and m.alive and m.attackable]
         if taunts and not (is_minion(tgt) and tgt.taunt):
-            return False
+            return self.fail("对方有嘲讽随从，必须先攻击嘲讽")
         owner = self.players[attacker.owner_id]
         defender = self.foe_of(owner)
         # 奥秘：冰冻陷阱（任何攻击）/ 蒸发 / 误导（打英雄）
@@ -2089,25 +2104,31 @@ class Game:
     # -- 英雄攻击（用脸/用武器）--
     def hero_attack(self, p: Player, tgt) -> bool:
         """英雄攻击：需要有攻击力（武器或临时增益），风怒武器每回合 2 次"""
+        self.last_error = None
         max_atk = 2 if (p.weapon and p.weapon.get("windfury")) else 1
-        if self.over or p.hero_attacks >= max_atk or p.frozen:
-            return False
+        if self.over:
+            return self.fail("对局已经结束了")
+        if p.frozen:
+            return self.fail("你的英雄被冻结，无法攻击")
+        if p.hero_attacks >= max_atk:
+            return self.fail("本回合已经攻击过了" if max_atk == 1
+                             else f"本回合最多攻击 {max_atk} 次")
         atk = p.attack
         if atk <= 0:
-            return False
+            return self.fail("英雄没有攻击力（需要武器，或德鲁伊变脸）")
         foe = self.foe_of(p)
         taunts = [m for m in foe.board if m.taunt and m.alive and m.attackable]
         if is_minion(tgt):
             if tgt not in foe.board or not tgt.alive:
-                return False
+                return self.fail("目标不在对方场上")
             if not tgt.attackable:                     # 潜行随从不能被攻击
-                return False
+                return self.fail(f"{tgt.name} 潜行中，不能被攻击")
             if taunts and not tgt.taunt:            # 有嘲讽必须先打嘲讽
-                return False
+                return self.fail("对方有嘲讽随从，必须先攻击嘲讽")
         elif tgt is not foe:
-            return False
+            return self.fail("目标无效")
         elif taunts:                                # 打脸时 likewise 被嘲讽挡住
-            return False
+            return self.fail("对方有嘲讽随从，不能打英雄")
 
         p.hero_attack_used = True
         p.hero_attacks += 1
@@ -2144,12 +2165,17 @@ class Game:
 
     # -- 英雄技能（2 费，按职业简化）--
     def hero_power(self, p: Player, target=None) -> bool:
-        if p.hero_power_used or p.mana < 2 or self.over:
-            return False
+        self.last_error = None
+        if self.over:
+            return self.fail("对局已经结束了")
+        if p.hero_power_used:
+            return self.fail("本回合已经用过英雄技能了")
+        if p.mana < 2:
+            return self.fail(f"法力水晶不够（英雄技能需要 2，只有 {p.mana}）")
         # 敌方潜行随从不能被技能指定（技能在规则上等同法术）
         if is_minion(target) and target.stealth and target.owner_id != p.pid:
             self.say(f"  {target.name} 无法被指定")
-            return False
+            return self.fail(f"{target.name} 潜行中，无法被指定")
         p.mana -= 2
         p.hero_power_used = True
         c = Ctx(self, p, self.foe_of(p), target=target, spell=True)   # 技能也吃法强/维伦
