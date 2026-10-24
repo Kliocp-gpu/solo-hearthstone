@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-**v1.03** · a single-player Hearthstone you run locally · pure Python standard library + one HTML file · zero dependencies
+**v1.04** · a single-player Hearthstone you run locally · pure Python standard library + one HTML file · zero dependencies
 
 Play a browser-based Hearthstone against an AI. No art, no animation — just the **card effects**.
 All **382 cards** of the original 2014 set (Basic + Classic) are fully implemented:
