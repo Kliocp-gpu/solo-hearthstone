@@ -30,7 +30,7 @@ global.__started = null;
 const baseFetch = async (path, opt)=>{
   if(path.startsWith('/api/cards')){
     const cls = decodeURIComponent(path.split('cls=')[1]||'');
-    const cards = CARDS.filter(c => cls==='NEUTRAL' ? c.cls==='NEUTRAL' : (c.cls===cls || c.cls==='NEUTRAL'));
+    const cards = CARDS.filter(c => c.cls===cls);   // 与 serve.py 一致：职业页只回本职业牌
     return { ok:true, json:async()=>({ok:true, cards, classes:CLASSES, hero_powers:{}}) };
   }
   if(path.startsWith('/api/start')){
@@ -60,34 +60,50 @@ const checks = `(async ()=>{
   const sleep = global.__sleep, A = global.__A;
   await sleep(30);
   const tabs = document.getElementById('clsTabs').children;
-  A(tabs.length===4, '页签 3 职业 + 通用（实际：' + tabs.map(t=>t.textContent).join(',') + '）');
+  const pool = document.getElementById('pool');
+
+  A(tabs.length===4, '页签 3 职业 + 通用');
   A(DECKCLASS==='MAGE' && VIEWCLS==='MAGE', '初始为法师');
-  A(document.getElementById('pool').innerHTML.includes('k-MAGE'),
-    '职业页里职业牌带职业色标');
-  A(document.getElementById('pool').innerHTML.includes('k-NEUTRAL'),
-    '职业页里中立牌也带「中立」色标');
+  A(pool.innerHTML.includes('k-MAGE') && !pool.innerHTML.includes('k-NEUTRAL'),
+    '法师页只有法师牌（带职业色标，不含中立）');
+  A(ALL.length===1 && ALL[0].name==='火球术', '法师页卡池 = 25 选 1 的火球术');
 
   pickTab('NEUTRAL'); await sleep(20);
-  A(VIEWCLS==='NEUTRAL' && DECKCLASS==='MAGE', '切通用后卡组职业不变');
-  A(ALL.length===1 && ALL[0].name==='灵魂之火', '通用页只显示中立牌（' + ALL.map(c=>c.name) + '）');
+  A(VIEWCLS==='NEUTRAL' && DECKCLASS==='MAGE', '通用页只切换浏览，卡组归属不变');
+  A(pool.innerHTML.includes('k-NEUTRAL') && !pool.innerHTML.includes('k-MAGE'),
+    '通用页只有中立牌');
+  A(ALL.length===1 && ALL[0].name==='灵魂之火', '通用页卡池 = 灵魂之火');
+
   add('VAN_EX1_019'); await sleep(5);
-  A(DECK.length===1, '通用页可以把中立牌加进卡组');
+  A(DECK.length===1, '通用页可以把中立牌加进法师卡组');
+
+  // 卡组非空：其他职业页签应被禁用，点了也不换
+  pickTab('HUNTER'); await sleep(20);
+  A(DECKCLASS==='MAGE' && VIEWCLS==='NEUTRAL' && DECK.length===1,
+    '卡组非空时点其他职业页签无效');
+  const hunter = tabs.find(t=>t.dataset.cls==='HUNTER');
+  A(hunter.disabled===true && hunter.title.indexOf('清空')>=0, '猎人页签被禁用并带提示');
 
   pickTab('WARLOCK'); await sleep(20);
-  A(DECKCLASS==='WARLOCK' && VIEWCLS==='WARLOCK' && DECK.length===0, '换职业清空卡组');
-  add('VAN_EX1_019'); await sleep(5);
-  A(DECK.length===1, '术士页加灵魂之火');
+  A(DECKCLASS==='MAGE', '术士页签同样被锁');
 
-  pickTab('NEUTRAL'); await sleep(20);
-  A(DECK.length===1 && VIEWCLS==='NEUTRAL', '回通用页卡组保留');
+  // 清空后解锁
+  clearDeck(); await sleep(5);
+  const warlock = tabs.find(t=>t.dataset.cls==='WARLOCK');
+  A(warlock.disabled===false, '清空卡组后其他职业页签解锁');
+
+  pickTab('WARLOCK'); await sleep(20);
+  A(DECKCLASS==='WARLOCK' && DECK.length===0, '解锁后可以换职业');
+  add('VAN_EX1_019'); await sleep(5);
+  A(DECK.length===1, '术士卡组加入中立牌灵魂之火');
 
   await startGame(); await sleep(5);
-  A(global.__started && global.__started.cls==='WARLOCK' && global.__started.deck.length===1,
+  A(global.__started && global.__started.cls==='WARLOCK',
     '开局 cls 用卡组职业（实际 ' + (global.__started && global.__started.cls) + '）');
   A(document.getElementById('viewDeck').classList.contains('hidden') &&
     !document.getElementById('viewGame').classList.contains('hidden'), '开局后切到对战视图');
 
   console.log(process.exitCode ? '结果：有失败项' : '结果：页签逻辑全部通过');
-})().catch(e=>{ console.error('挂了：', e); process.exit(1); });`;
+})().catch(e=>{ console.error('挂了：', e); process.exit(1); })`;
 
 vm.runInThisContext(checks, {filename:'/tmp/checks.js'});

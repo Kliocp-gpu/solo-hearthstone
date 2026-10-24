@@ -244,6 +244,9 @@ function addTab(id, name){
   document.getElementById('clsTabs').appendChild(b);
 }
 function pickTab(id){
+  // 卡组里有牌时，其他职业页签是禁用的：换职业必然清空卡组，不能误点。
+  // 「通用」不受限——它只是浏览过滤，不动卡组。
+  if(id !== 'NEUTRAL' && id !== DECKCLASS && DECK.length > 0) return;
   if(id === 'NEUTRAL'){            // 通用只是浏览过滤，不影响卡组归属
     VIEWCLS = 'NEUTRAL'; renderTabs(); loadPool(); return;
   }
@@ -254,9 +257,13 @@ function pickTab(id){
   VIEWCLS = id; renderTabs(); loadPool();
 }
 function renderTabs(){
+  // 卡组里有牌时锁住其他职业页签（置灰不可点）；通用页签始终可进
   document.querySelectorAll('#clsTabs .cm-tab').forEach(b=>{
-    b.classList.toggle('active', b.dataset.cls === VIEWCLS);
-    b.classList.toggle('deckcls', b.dataset.cls === DECKCLASS && b.dataset.cls !== VIEWCLS);
+    const id = b.dataset.cls;
+    b.classList.toggle('active', id === VIEWCLS);
+    b.classList.toggle('deckcls', id === DECKCLASS && id !== VIEWCLS);
+    b.disabled = DECK.length > 0 && id !== 'NEUTRAL' && id !== DECKCLASS;
+    b.title = b.disabled ? '卡组里有牌，换职业会清空卡组；先清空或返回本职业' : '';
   });
 }
 
@@ -337,6 +344,7 @@ function drawPool(){
   document.getElementById('cntHint').textContent =
     left > 0 ? `（还差 ${left} 张）` : '（已满，可以开战）';
   document.getElementById('go').disabled = DECK.length!==30;
+  renderTabs();                    // 卡组张数变了，页签的禁用状态跟着变
 }
 
 function add(cid){
@@ -387,6 +395,7 @@ function backToDeck(){
   document.getElementById('viewDeck').classList.remove('hidden');
   document.getElementById('back').classList.add('hidden');
   document.getElementById('go').disabled = DECK.length!==30;
+  renderTabs();                    // 从对战视图回来时页签状态可能已变化
 }
 
 function mHtml(m, side, i){

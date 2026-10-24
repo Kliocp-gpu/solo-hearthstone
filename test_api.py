@@ -283,6 +283,16 @@ def main():
         check("未知 GET 接口也返回 JSON 错误",
               code == 404 and r["error"]["code"] == "not_found", f"{code} {r}")
 
+        print("=== 组卡池：职业页与通用页分离 ===")
+        code, r = api(port, "/api/cards?cls=MAGE")
+        classes = {c["cls"] for c in r["cards"]}
+        check("职业页只回本职业牌（不再混入中立）",
+              code == 200 and classes == {"MAGE"}, f"{code} {classes}")
+        code, r = api(port, "/api/cards?cls=NEUTRAL")
+        classes = {c["cls"] for c in r["cards"]}
+        check("通用页只回中立牌",
+              code == 200 and classes == {"NEUTRAL"}, f"{code} {classes}")
+
         print("=== 正常流程仍然通 ===")
         fresh(port)
         code, r = api(port, "/api/end", {})

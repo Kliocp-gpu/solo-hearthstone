@@ -204,7 +204,9 @@ class H(BaseHTTPRequestHandler):
             for cid, d in CARDS.items():
                 if d.get("token"):          # 衍生牌不进组卡池
                     continue
-                if cls and d.get("cls") not in (cls, "NEUTRAL"):
+                # 精确匹配：职业页只给本职业牌，中立牌走 cls=NEUTRAL 的「通用」页
+                # （组卡器仿官方收藏：职业与通用分开展示；deck_error 仍允许中立牌混编）
+                if cls and d.get("cls") != cls:
                     continue
                 out.append(dict(cid=cid, name=d.get("name"), cost=d.get("cost", 0),
                                 atk=d.get("atk"), hp=d.get("hp"),
