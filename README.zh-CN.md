@@ -112,7 +112,7 @@ python3 serve.py
 | `static/index.html` | 界面，单文件（内联 CSS/JS），无框架 |
 | `selftest.py` | 冒烟测试：随机卡组自动打 N 局，检查崩溃与卡效果报错 |
 | `test_cards.py` | 行为级验证：161 条断言，逐张检查关键卡是否真的按卡面生效 |
-| `test_api.py` | 接口层回归：28 条断言，检查错误码、失败原因、失败时局面不变 |
+| `test_api.py` | 接口层回归：45 条断言，检查错误码、失败原因、失败时局面不变 |
 | `audit.py` | 卡面 ↔ 代码一致性审计：卡面说「造成伤害」，代码里就必须有相应调用 |
 
 ### 为什么卡是「生成」出来的
@@ -147,7 +147,7 @@ register('VAN_CS2_029', name='火球术', cost=4, type='SPELL',
 
 ```bash
 python3 test_cards.py       # 161/161 通过（逐张验证行为，不是数数量）
-python3 test_api.py         # 28/28 通过（接口层：错误码、失败原因、失败时局面不变）
+python3 test_api.py         # 45/45 通过（接口层：错误码、失败原因、失败时局面不变）
 python3 selftest.py 1000    # 1000 局随机对战，0 卡效果报错
 python3 audit.py            # 卡面↔代码审计，0 空壳
 ```
@@ -171,18 +171,21 @@ python3 audit.py            # 卡面↔代码审计，0 空壳
 - [ ] 地精大战侏儒（GVG，2014-12）
 - [ ] …
 
-加新版本只需要改 `gen_cards.py` 顶部：
+### 新增一个版本
+
+版本列表写在 `gen_cards.py` 顶部，`ENABLED` 表示 `RELEASES` 中当前启用到第几项：
 
 ```python
 RELEASES = [
-    ("VANILLA", "2014 原版（基础 + 经典）"),
-    ("NAXX",    "纳克萨玛斯的诅咒"),      # 去掉注释
+    ("VANILLA", "2014 原版（基础 + 经典）"),   # 已启用
+    ("NAXX",    "纳克萨玛斯的诅咒"),           # 下一个版本
 ]
-ENABLED = 2        # 1 → 2
+ENABLED = 2        # 启用上面两项
 ```
 
-然后 `python3 gen_cards.py` → `python3 selftest.py 300`。
-遇到没见过的机制，就往规则表加一条 + 在 `engine.py` 加一个原语。
+重新执行 `python3 gen_cards.py` 会依据 HearthstoneJSON 卡表重写 `cards.py`。
+规则表暂时表达不了的机制，以「规则表增加一条 + `engine.py` 增加一个原语」的方式实现，
+之后用 `python3 selftest.py 300` 跑 300 局随机对战做冒烟检查。
 
 ---
 

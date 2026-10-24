@@ -124,7 +124,7 @@ Implemented mechanics:
 | `static/index.html` | The UI, single file (inline CSS/JS), no framework |
 | `selftest.py` | Smoke test: play N random-deck games, check for crashes and card-effect errors |
 | `test_cards.py` | Behavioral tests: 161 assertions that key cards really do what their text says |
-| `test_api.py` | HTTP-layer regression: 28 assertions on error codes, reasons, and state preservation |
+| `test_api.py` | HTTP-layer regression: 45 assertions on error codes, reasons, and state preservation |
 | `audit.py` | Card-text ↔ code audit: if the text says "deal damage", the code must contain the corresponding call |
 
 ### Why cards are generated
@@ -160,7 +160,7 @@ Rule tables (in `gen_cards.py`):
 
 ```bash
 python3 test_cards.py       # 161/161 (verifies behavior card by card, not just counting)
-python3 test_api.py         # 28/28 (HTTP layer: error codes, reasons, state untouched on failure)
+python3 test_api.py         # 45/45 (HTTP layer: error codes, reasons, state untouched on failure)
 python3 selftest.py 1000    # 1000 random games, 0 card-effect errors
 python3 audit.py            # card-text ↔ code audit, 0 empty shells
 ```
@@ -185,18 +185,22 @@ Sets are added in release order, one at a time:
 - [ ] Goblins vs Gnomes (GVG, 2014-12)
 - [ ] …
 
-Adding a set only requires editing the top of `gen_cards.py`:
+### Adding a set
+
+Active sets are declared at the top of `gen_cards.py`; `ENABLED` is how many entries of
+`RELEASES` are currently included:
 
 ```python
 RELEASES = [
-    ("VANILLA", "2014 原版（基础 + 经典）"),
-    ("NAXX",    "纳克萨玛斯的诅咒"),      # uncomment
+    ("VANILLA", "2014 原版（基础 + 经典）"),   # already included
+    ("NAXX",    "纳克萨玛斯的诅咒"),           # next set
 ]
-ENABLED = 2        # 1 → 2
+ENABLED = 2        # include both entries
 ```
 
-Then `python3 gen_cards.py` → `python3 selftest.py 300`.
-When you meet an unseen mechanic, add a rule-table entry and a primitive in `engine.py`.
+Re-running `python3 gen_cards.py` rewrites `cards.py` from the HearthstoneJSON dump.
+Mechanics the rule tables cannot express yet are implemented as a rule-table entry plus a
+primitive in `engine.py`; `python3 selftest.py 300` then plays 300 random games as a smoke test.
 
 ---
 

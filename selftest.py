@@ -1,4 +1,4 @@
-"""冒烟测试：随机卡组自动对战，确保引擎 + 卡池不崩"""
+"""Smoke test: random decks play each other, checking the engine and pool do not crash."""
 import random, sys, collections
 import engine
 import cards  # noqa: F401  注册卡池

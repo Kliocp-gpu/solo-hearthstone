@@ -1,4 +1,4 @@
-"""卡面文本 ↔ 生成代码 一致性审计
+"""Card text vs generated code audit
 
 数量统计会骗人（历史上出现过「47% 已实现」里混着 87 张空壳）。
 这个脚本不看数量，只看「卡面说了什么」和「代码里到底有没有对应的调用」。
@@ -17,15 +17,15 @@ import sys
 import cards  # noqa: F401  触发卡池注册
 from engine import CARDS
 
-# ---- 概念 → (卡面里怎么写的, 代码里必须出现哪些词之一) ----
-# need 列表里既有原语名，也有「封装了这个原语的 helper」（helper 内部会调用它）
+# ---- concept -> (regex over the card text, tokens that must appear in the code) ----
+# `need` holds both primitive names and helpers that wrap them internally
 CONCEPTS = [
     ("damage",   r"造成\s*\d+\s*点伤害|造成等同于|点伤害",
      ("damage", "aoe", "cleave", "explosive", "blade_flurry", "shadowflame", "brawl",
       "holy_wrath", "freeze_and_damage", "cone_of_cold", "armor_as_damage",
       "hero_atk_damage", "damage_step", "hungry_crab", "harrison", "betrayal",
       "poisonous", "ysera_awakens", "TOKEN_",
-      # 带条件的单张 helper
+      # single-card helpers with conditions
       "ice_lance", "eviscerate", "perdition_blade", "headcrack", "mortal_coil",
       "bane_of_doom", "slam", "mortal_strike", "kill_command", "demonfire",
       "shadowform")),
@@ -55,7 +55,7 @@ CONCEPTS = [
     ("mana",     r"法力水晶", ("mana", "crystal", "next_spell_discount")),
 ]
 
-# 合理例外：卡面提到，但效果由引擎钩子 / 特殊机制承担
+# Known exceptions: the text mentions it, but an engine hook implements it
 ALLOW = {
     "法力怨魂": "卡表里的中文文本多印了「召唤」二字，实际效果是「所有随从费用+1」，已实现",
     "游学者周卓": "由 play_card 里的 _maybe_cho 钩子实现",
@@ -78,7 +78,7 @@ ALLOW = {
 
 
 def card_lines():
-    """cards.py 里每张卡的那一行：cid -> 代码串"""
+    """One register(...) line per card in cards.py: cid -> code string."""
     out = {}
     with open("cards.py", encoding="utf-8") as f:
         for line in f:
@@ -103,7 +103,7 @@ def main():
         text = d.get("text") or ""
         code = lines.get(cid, "")
         checked += 1
-        # 「部分实现」本来就会漏东西，只在它能解析的部分上做提示
+        # Partially implemented cards admit gaps by design; only hint on what they do parse
         for key, pat, need in CONCEPTS:
             if not re.search(pat, text):
                 continue

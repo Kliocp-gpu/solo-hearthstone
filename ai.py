@@ -1,4 +1,4 @@
-"""AI 对手：局面估值 + 贪心出牌。够笨，但够玩。
+"""AI opponent: board evaluation plus greedy play. Simple, but playable.
 
 思路：
   1. 出牌：枚举所有打得起的牌，按「费用利用率 + 期望收益」贪心，能斩杀优先斩杀
@@ -25,7 +25,7 @@ def _board_value(p) -> float:
 
 
 def evaluate(g, me) -> float:
-    """站在 me 视角的局面分"""
+    """Board score from the given player's point of view."""
     foe = g.foe_of(me)
     score = 0.0
     score += _board_value(me) - _board_value(foe) * 1.05   # 略微偏向解场
@@ -41,7 +41,7 @@ def evaluate(g, me) -> float:
 
 
 def _lethal(g, me) -> bool:
-    """能否这回合打死对方：所有可攻击随从的攻击力之和 >= 对方血量（忽略嘲讽的粗略判断）"""
+    """Lethal this turn? Sum of ready attackers' attack >= enemy health (ignores taunt)."""
     foe = g.foe_of(me)
     if any(m.taunt and m.alive for m in foe.board):
         return False
@@ -51,7 +51,7 @@ def _lethal(g, me) -> bool:
 
 
 def _choose_index(g, p, d):
-    """抉择牌选哪个选项：按选项文字里的关键词粗略打分（够用就行）"""
+    """Pick a Choose One option by scoring keywords in its label."""
     opts = d.get("choose") or []
     if not opts:
         return None
@@ -81,7 +81,7 @@ def _choose_index(g, p, d):
 
 
 def _pick_target(g, p, t):
-    """按目标类型挑一个目标（敌方/己方/不限）"""
+    """Pick a target for the requested targeting type."""
     if not t:
         return None
     foe = g.opp
@@ -106,13 +106,13 @@ def ai_turn(g):
     p = g.cur
     rng = g.rng
 
-    # ---- 1. 出牌：贪心，尽量花光法力 ----
+    # ---- 1. Play cards: greedy, spend as much mana as possible ----
     for _ in range(20):
         playable = [i for i, cid in enumerate(p.hand)
                     if CARDS.get(cid) and g.cost(p, cid) <= p.mana]
         if not playable:
             break
-        # 优先打高费（法力利用率），斩杀牌优先
+        # Prefer the most expensive playable card; lethal first
         i = max(playable, key=lambda i: g.cost(p, p.hand[i]))
         d = CARDS[p.hand[i]]
         choice = _choose_index(g, p, d)
@@ -124,7 +124,7 @@ def ai_turn(g):
         if g.over:
             return
 
-    # ---- 2. 英雄技能 ----
+    # ---- 2. Hero power ----
     if not g.over and not p.hero_power_used and p.mana >= 2:
         foe = g.opp
         use = False
@@ -145,7 +145,7 @@ def ai_turn(g):
             if g.over:
                 return
 
-    # ---- 3. 攻击 ----
+    # ---- 3. Attacks ----
     lethal = _lethal(g, p)
     for m in list(p.board):
         while m.attacks_left > 0 and not m.frozen and m.atk > 0 and not g.over:
@@ -157,7 +157,7 @@ def ai_turn(g):
                 g.attack(m, g.opp)
                 continue
             if pool:
-                # 白吃：打得过且不亏太多
+                # Free trade: kills the target and survives
                 killable = [x for x in pool if x.hp <= m.atk and m.hp > x.atk]
                 if killable:
                     tgt = max(killable, key=_minion_value)
@@ -170,7 +170,7 @@ def ai_turn(g):
                 if not g.attack(m, g.opp):
                     break
 
-    # ---- 4. 英雄攻击（有武器或德鲁伊变脸后；风怒武器可打两次）----
+    # ---- 4. Hero attacks (weapon or Druid shapeshift; windfury weapon twice) ----
     max_hits = 2 if (p.weapon and p.weapon.get("windfury")) else 1
     while not g.over and p.attack > 0 and p.hero_attacks < max_hits:
         foes = g.opp.board

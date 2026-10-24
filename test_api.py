@@ -1,4 +1,4 @@
-"""接口层回归：错误码、失败原因、失败时局面不变
+"""HTTP-layer regression: error codes, failure reasons, and state preserved on failure.
 
 为什么单独有这一层：test_cards.py 验的是「规则对不对」，selftest 验的是「会不会崩」，
 但网页对战走的是 HTTP —— 动作失败时到底给用户什么反馈、局面有没有被悄悄改掉，
@@ -35,7 +35,7 @@ def start_server():
 
 
 def api(port, path, body=None):
-    """返回 (http_code, json)。body 为 None 时发 GET。"""
+    """Return (http_code, json). A None body sends a GET."""
     url = f"http://127.0.0.1:{port}{path}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
@@ -54,7 +54,7 @@ def api(port, path, body=None):
 
 
 def signature(st):
-    """局面指纹：拿它比对「失败之后局面有没有被改动」"""
+    """State fingerprint: used to prove a failed action changed nothing."""
     if not st:
         return None
     me = st["me"]
@@ -63,7 +63,7 @@ def signature(st):
 
 
 def legal_deck(cls="MAGE", n=30):
-    """构造一套合法卡组：15 张非传说各带 2 张"""
+    """Build a legal deck: 15 non-legendary cards, two copies each."""
     pool = [cid for cid, d in serve.CARDS.items()
             if not d.get("token")
             and d.get("type") in ("MINION", "SPELL", "WEAPON")
@@ -78,7 +78,7 @@ def legal_deck(cls="MAGE", n=30):
 
 
 def fresh(port, cls="MAGE", seed=12345):
-    """固定种子 + 合法卡组开局，方便复现"""
+    """Start a game with a fixed seed and a legal deck so runs are reproducible."""
     return api(port, "/api/start", {"cls": cls, "seed": seed, "deck": legal_deck(cls)})
 
 
@@ -169,7 +169,7 @@ def main():
               len(g.players[1].deck) + len(g.players[1].hand) - 1 == 30,
               f"{len(g.players[1].deck)} + {len(g.players[1].hand)} - 1")
 
-        # 直接验生成器本身：9 个职业各 8 个种子，生成的 30 张都必须合法
+        # Verify the generator itself: every class x 8 seeds must yield a legal 30
         bad_gen = []
         for c in serve.collectible_classes():
             for s in range(8):
@@ -201,7 +201,7 @@ def main():
         check("越界出牌后局面没有任何变化",
               signature(r["state"]) == before, f"{before} → {signature(r['state'])}")
 
-        # 把法力归零，任何一张正费牌都打不出
+        # Drop mana to zero so any card with cost >= 1 is unplayable
         g.players[0].mana = 0
         st = api(port, "/api/state")[1]["state"]
         idx = next(i for i, c in enumerate(st["me"]["hand"]) if c["cost"] > 0)
@@ -217,7 +217,7 @@ def main():
         check("随从位置越界 → 400 bad_source",
               code == 400 and r["error"]["code"] == "bad_source", f"{code} {r}")
 
-        # 打一个没有冲锋的随从上去，测「当回合不能攻击」
+        # Play a minion without charge to test "cannot attack the turn it is played"
         g.players[0].mana = 10
         st = api(port, "/api/state")[1]["state"]
         midx = next(i for i, c in enumerate(st["me"]["hand"])
