@@ -23,7 +23,7 @@ cd "$(dirname "$0")"
 
 APP="build/单机炉石.app"
 BIN="$APP/Contents/MacOS/Hearthstone"
-TMP="/tmp/hs-app-tests"
+TMP="${HS_TEST_TMP:-/tmp/hs-app-tests}"
 LOCK_DIR="/tmp/hearthstone-app.d"
 
 if [ ! -x "$BIN" ]; then
@@ -33,7 +33,12 @@ fi
 
 rm -rf "$TMP"; mkdir -p "$TMP"
 fail=0
-SPAWNED=""; OWNED_SRV=""; DUMMY=""
+OWNED_SRV=""
+DUMMY=""
+# 拉起的 App pid 记在文件里，不用变量：launch_app 常被 $(...) 调用，
+# 命令替换在子 Shell 里跑，函数内对变量的赋值回不到主 Shell。
+SPAWN_FILE="$TMP/.spawned"
+: > "$SPAWN_FILE"
 
 PREEXIST=$(lsof -nP -ti "tcp:8765-8800" -sTCP:LISTEN 2>/dev/null | sort -u | tr '\n' ' ')
 if [ -n "$PREEXIST" ]; then
@@ -71,11 +76,11 @@ wait_port_free() {
   return 1
 }
 
-launch_app() {  # launch_app <日志> [额外 env ...]；pid 记进 SPAWNED
+launch_app() {  # launch_app <日志> [额外 env ...]；pid 写进 SPAWN_FILE 并回显
   local log=$1; shift
   env HS_APP_LOG="$log" "$@" "$BIN" >/dev/null 2>&1 &
   local pid=$!
-  SPAWNED="$SPAWNED $pid"
+  echo "$pid" >> "$SPAWN_FILE"
   echo "$pid"
 }
 
@@ -86,24 +91,37 @@ record_srv() {  # record_srv <日志>：服务 pid 记进 OWNED_SRV
 }
 
 cleanup() {
-  local p f srv
+  local p f srv apps
+  apps=$(tr '\n' ' ' < "$SPAWN_FILE" 2>/dev/null)
   # 1) 先 SIGKILL 本次拉起的 App：别让它们在收服务时又自动重启一个
-  for p in ${SPAWNED:-}; do kill -9 "$p" 2>/dev/null; done
+  for p in $apps; do kill -9 "$p" 2>/dev/null; done
   sleep 0.2
   # 2) 按每个 App 自己的记录收服务（只碰记录在案的 pid）
-  for p in ${SPAWNED:-}; do
+  for p in $apps; do
     f="$LOCK_DIR/$p.json"
     [ -f "$f" ] || continue
     srv=$(/usr/bin/python3 -c "import json;print(json.load(open('$f')).get('server') or '')" 2>/dev/null)
     [ -n "$srv" ] && kill -9 "$srv" 2>/dev/null
     rm -f "$f"
   done
-  # 3) 日志里读到过的服务 pid 也一并收掉
+  # 3) 日志/记录里读到过的服务 pid 也一并收掉
   for srv in ${OWNED_SRV:-}; do kill -9 "$srv" 2>/dev/null; done
   [ -n "${DUMMY:-}" ] && kill -9 "$DUMMY" 2>/dev/null
   return 0
 }
 trap cleanup EXIT
+
+# 供第 10 组自测用：启动一个长寿命实例，然后立刻以失败退出，验证 trap 真能收干净
+if [ "${HS_TEST_ABORT_MODE:-}" = "1" ]; then
+  L="$TMP/abort.log"
+  launch_app "$L" HS_APP_QUIT_AFTER=60 >/dev/null
+  APID=$(tail -1 "$SPAWN_FILE")
+  wait_log "$L" "load http://127.0.0.1:" 15
+  PS=$(port_from_log "$L")
+  echo "APP=$APID SRV=$(pid_on_port "$PS")" > "$TMP/abort.pids"
+  echo "self-test: 立刻以失败退出，清理交给 trap"
+  exit 1
+fi
 
 # ---------------------------------------------------------------- 1 基础
 echo "1. 基础：启动 / 就绪 / 加载 / 退出"
@@ -218,7 +236,7 @@ L5="$TMP/moved.log"
 MOVED="$TMP/moved-单机炉石.app"
 cp -R "$APP" "$MOVED"
 env HS_APP_LOG="$L5" HS_APP_QUIT_AFTER=6 "$MOVED/Contents/MacOS/Hearthstone" >/dev/null 2>&1 &
-M=$!; SPAWNED="$SPAWNED $M"
+echo $! >> "$SPAWN_FILE"
 record_srv "$L5"
 if wait_log "$L5" "game dir = $MOVED/Contents/Resources/game" 12; then OK "从新位置找到了 game 目录"; else NO "移动后找不到 game 目录"; fi
 if wait_log "$L5" "load http://127.0.0.1:" 12; then OK "移动后仍能正常加载"; else NO "移动后加载失败"; fi
@@ -334,9 +352,61 @@ PY
   rm -f "$LOCK_DIR/$A9.json"
 fi
 
+# ---------------------------------------------------------------- 10 失败退出清理
+echo "10. 失败退出时的清理：子脚本以 exit 1 结束，trap 必须收干净"
+CHILD_TMP="/tmp/hs-abort-child"
+CHILD_OUT="/tmp/hs-abort-child.out"
+rm -rf "$CHILD_TMP"
+HS_TEST_TMP="$CHILD_TMP" HS_TEST_ABORT_MODE=1 bash "$0" >"$CHILD_OUT" 2>&1
+RC=$?
+if [ "$RC" -ne 0 ]; then OK "子脚本按预期以非零状态退出（rc=${RC}）"; else NO "子脚本没有按预期失败"; fi
+APP10=$(grep -o 'APP=[0-9]*' "$CHILD_TMP/abort.pids" 2>/dev/null | cut -d= -f2)
+SRV10=$(grep -o 'SRV=[0-9]*' "$CHILD_TMP/abort.pids" 2>/dev/null | cut -d= -f2)
+if [ -z "${APP10:-}" ] || [ -z "${SRV10:-}" ]; then
+  NO "没拿到子脚本的 pid 记录（见 ${CHILD_OUT}）"
+else
+  sleep 0.5
+  if alive "$APP10"; then NO "失败退出后 App 进程还在（pid ${APP10}）"; else OK "App 进程已被 trap 清理"; fi
+  if alive "$SRV10"; then
+    NO "失败退出后服务进程还在（pid ${SRV10}）"
+    kill -9 "$SRV10" 2>/dev/null
+  else
+    OK "服务进程已被 trap 清理"
+  fi
+fi
+
+# ---------------------------------------------------------------- 11 缺启动时刻
+echo "11. 记录里没有启动时刻：拒绝回收（不再靠 pid+端口硬杀）"
+L11A="$TMP/nostart-a.log"; L11B="$TMP/nostart-b.log"
+A11=$(launch_app "$L11A" HS_APP_QUIT_AFTER=60); record_srv "$L11A"
+PA11=$(wait_log "$L11A" "load http://127.0.0.1:" 15 && port_from_log "$L11A")
+SRV11=$( [ -n "$PA11" ] && pid_on_port "$PA11" )
+if [ -z "${SRV11:-}" ]; then
+  NO "A11 的服务没起来，跳过本项"
+else
+  # 删掉 started 字段，模拟「取不到启动时刻」的记录
+  /usr/bin/python3 - "$LOCK_DIR/$A11.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d.pop("started", None)
+json.dump(d, open(p, "w"))
+PY
+  kill -9 "$A11" 2>/dev/null
+  sleep 1
+  B11=$(launch_app "$L11B" HS_APP_QUIT_AFTER=6); record_srv "$L11B"
+  if wait_log "$L11B" "没有启动时刻" 15; then OK "识别出记录缺少启动时刻"; else NO "没有对缺失启动时刻做拦截"; fi
+  sleep 0.5
+  if alive "$SRV11"; then OK "缺启动时刻 → 没有杀掉那个进程"; else NO "仍然把它杀了（拦截没生效）"; fi
+  if [ -f "$LOCK_DIR/$A11.json" ]; then OK "记录被保留（便于事后排查）"; else NO "把取证用的记录删了"; fi
+  wait_log "$L11B" "stopping server" 14
+  kill -9 "$SRV11" 2>/dev/null
+  rm -f "$LOCK_DIR/$A11.json"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
-  echo "结果：应用场景回归全部通过（9 组）"
+  echo "结果：应用场景回归全部通过（11 组）"
 else
   echo "结果：有失败项，日志在 $TMP/"
 fi

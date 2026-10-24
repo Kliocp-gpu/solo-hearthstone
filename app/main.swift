@@ -311,9 +311,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         do {
             try task.run()
             server = task
-            // 服务 pid、端口、启动时刻一起记进本实例的记录，异常退出后才有据可查
+            // 服务 pid、端口、启动时刻一起记进本实例的记录，异常退出后才有据可查。
+            // 启动时刻是回收时的必要条件，刚拉起的进程可能还查不到，重试几次再记。
             writeOwnLock(server: task.processIdentifier, port: port,
-                         started: processStartTime(task.processIdentifier))
+                         started: freshProcessStartTime(task.processIdentifier))
             plog("server started, pid=\(task.processIdentifier)")
         } catch {
             showError("无法启动 Python 服务：\(error.localizedDescription)")
@@ -449,11 +450,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 try? FileManager.default.removeItem(atPath: rec.path)
                 continue
             }
-            if let want = info.started {
-                guard let got = processStartTime(sp), abs(got - want) < 2.0 else {
-                    plog("reap: pid \(sp) 启动时刻与记录不符（记录 \(info.started ?? -1) / 实际 \(processStartTime(sp) ?? -1)），疑似 pid 复用，不动它（记录保留）")
-                    continue
-                }
+            // 启动时刻是「确认归属」的必要条件：记录里没有、或者读取失败，
+            // 一律不发信号（只保留记录）。宁可漏回收，也不能靠 pid + 端口硬杀。
+            guard let want = info.started else {
+                plog("reap: 实例 \(info.app) 的记录里没有启动时刻，无法确认归属，不动它（记录保留）")
+                continue
+            }
+            guard let got = processStartTime(sp), abs(got - want) < 2.0 else {
+                plog("reap: pid \(sp) 启动时刻与记录不符（记录 \(want) / 实际 \(processStartTime(sp) ?? -1)），疑似 pid 复用，不动它（记录保留）")
+                continue
             }
             plog("reap: 回收残留服务 pid=\(sp)（端口 \(p)，原实例 \(info.app)，三项校验均通过）")
             kill(sp, SIGTERM)
@@ -495,6 +500,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         let tv = info.kp_proc.p_starttime
         guard tv.tv_sec > 0 else { return nil }
         return Double(tv.tv_sec) + Double(tv.tv_usec) / 1_000_000
+    }
+
+    /// 刚拉起的进程可能还没进 proc 表：重试几次，尽量让记录里带上启动时刻
+    /// （缺了它，将来就无法确认归属，只能放弃回收）。
+    private func freshProcessStartTime(_ pid: Int32) -> Double? {
+        for _ in 0..<5 {
+            if let t = processStartTime(pid) { return t }
+            usleep(20_000)
+        }
+        return nil
     }
 
     private func stopServer() {
